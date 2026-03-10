@@ -2,6 +2,9 @@
 name = "rigsql-core"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core types (Token, Span, Segment) for the rigsql SQL linter"
 
 [dependencies]
 smol_str = { workspace = true }

@@ -1,0 +1,63 @@
+name: Publish to crates.io
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify version matches tag
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match Cargo.toml version ($CARGO_VERSION)"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      # Publish in dependency order — each crate needs its dependencies on crates.io first.
+      # Sleep between publishes to allow crates.io index to update.
+      - name: Publish rigsql-core
+        run: cargo publish -p rigsql-core --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - run: sleep 30
+
+      - name: Publish rigsql-lexer
+        run: cargo publish -p rigsql-lexer --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - run: sleep 30
+
+      - name: Publish rigsql-parser
+        run: cargo publish -p rigsql-parser --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - run: sleep 30
+
+      - name: Publish rigsql-dialects
+        run: cargo publish -p rigsql-dialects --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - run: sleep 30
+
+      - name: Publish rigsql-rules
+        run: cargo publish -p rigsql-rules --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - run: sleep 30
+
+      - name: Publish rigsql-config
+        run: cargo publish -p rigsql-config --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - run: sleep 30
+
+      - name: Publish rigsql-output
+        run: cargo publish -p rigsql-output --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - run: sleep 30
+
+      - name: Publish rigsql-cli
+        run: cargo publish -p rigsql-cli --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
