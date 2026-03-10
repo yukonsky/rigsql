@@ -10,16 +10,26 @@ use crate::violation::LintViolation;
 pub struct RuleLT11;
 
 impl Rule for RuleLT11 {
-    fn code(&self) -> &'static str { "LT11" }
-    fn name(&self) -> &'static str { "layout.set_operator_newline" }
-    fn description(&self) -> &'static str { "Set operators should be surrounded by newlines." }
+    fn code(&self) -> &'static str {
+        "LT11"
+    }
+    fn name(&self) -> &'static str {
+        "layout.set_operator_newline"
+    }
+    fn description(&self) -> &'static str {
+        "Set operators should be surrounded by newlines."
+    }
     fn explanation(&self) -> &'static str {
         "Set operators such as UNION, INTERSECT, and EXCEPT combine the results of \
          multiple queries. They should be surrounded by newlines to visually separate \
          the individual queries and improve readability."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { false }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        false
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::RootOnly
@@ -60,7 +70,10 @@ impl Rule for RuleLT11 {
             if !has_newline_before {
                 violations.push(LintViolation::new(
                     self.code(),
-                    format!("Expected newline before '{}'.", t.token.text.to_ascii_uppercase()),
+                    format!(
+                        "Expected newline before '{}'.",
+                        t.token.text.to_ascii_uppercase()
+                    ),
                     op_span,
                 ));
             }
@@ -68,7 +81,10 @@ impl Rule for RuleLT11 {
             if !has_newline_after {
                 violations.push(LintViolation::new(
                     self.code(),
-                    format!("Expected newline after '{}'.", t.token.text.to_ascii_uppercase()),
+                    format!(
+                        "Expected newline after '{}'.",
+                        t.token.text.to_ascii_uppercase()
+                    ),
                     op_span,
                 ));
             }
@@ -78,7 +94,10 @@ impl Rule for RuleLT11 {
     }
 }
 
-enum Direction { Before, After }
+enum Direction {
+    Before,
+    After,
+}
 
 fn check_adjacent_newline(tokens: &[TokenSegment], idx: usize, dir: Direction) -> bool {
     let mut j = match dir {

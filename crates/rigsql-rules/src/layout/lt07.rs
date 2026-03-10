@@ -11,16 +11,26 @@ use crate::violation::{LintViolation, SourceEdit};
 pub struct RuleLT07;
 
 impl Rule for RuleLT07 {
-    fn code(&self) -> &'static str { "LT07" }
-    fn name(&self) -> &'static str { "layout.with_spacing" }
-    fn description(&self) -> &'static str { "'WITH' keyword not followed by single space." }
+    fn code(&self) -> &'static str {
+        "LT07"
+    }
+    fn name(&self) -> &'static str {
+        "layout.with_spacing"
+    }
+    fn description(&self) -> &'static str {
+        "'WITH' keyword not followed by single space."
+    }
     fn explanation(&self) -> &'static str {
         "The WITH keyword in a Common Table Expression should be followed by exactly \
          one space before the CTE name. Multiple spaces or newlines between WITH and \
          the CTE name reduce readability."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::WithClause])

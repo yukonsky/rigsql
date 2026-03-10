@@ -26,16 +26,26 @@ impl Default for RuleLT04 {
 }
 
 impl Rule for RuleLT04 {
-    fn code(&self) -> &'static str { "LT04" }
-    fn name(&self) -> &'static str { "layout.commas" }
-    fn description(&self) -> &'static str { "Commas should be at the end of the line, not the start." }
+    fn code(&self) -> &'static str {
+        "LT04"
+    }
+    fn name(&self) -> &'static str {
+        "layout.commas"
+    }
+    fn description(&self) -> &'static str {
+        "Commas should be at the end of the line, not the start."
+    }
     fn explanation(&self) -> &'static str {
         "Commas in SELECT lists, GROUP BY, and other clauses should consistently appear \
          at the end of the line (trailing) or the start of the next line (leading). \
          Mixing styles reduces readability."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
         if let Some(val) = settings.get("comma_style") {
@@ -92,7 +102,9 @@ fn is_leading_comma(ctx: &RuleContext) -> bool {
         let seg = &ctx.siblings[i];
         match seg.segment_type() {
             SegmentType::Whitespace => {
-                if i == 0 { return false; }
+                if i == 0 {
+                    return false;
+                }
                 i -= 1;
             }
             SegmentType::Newline => return true,
@@ -107,7 +119,9 @@ fn is_trailing_comma(ctx: &RuleContext) -> bool {
     while i < ctx.siblings.len() {
         let seg = &ctx.siblings[i];
         match seg.segment_type() {
-            SegmentType::Whitespace => { i += 1; }
+            SegmentType::Whitespace => {
+                i += 1;
+            }
             SegmentType::Newline => return true,
             _ => return false,
         }

@@ -26,15 +26,25 @@ impl Default for RuleCP05 {
 }
 
 impl Rule for RuleCP05 {
-    fn code(&self) -> &'static str { "CP05" }
-    fn name(&self) -> &'static str { "capitalisation.types" }
-    fn description(&self) -> &'static str { "Data type names must be consistently capitalised." }
+    fn code(&self) -> &'static str {
+        "CP05"
+    }
+    fn name(&self) -> &'static str {
+        "capitalisation.types"
+    }
+    fn description(&self) -> &'static str {
+        "Data type names must be consistently capitalised."
+    }
     fn explanation(&self) -> &'static str {
         "Data type names (INT, VARCHAR, TEXT, etc.) should use consistent capitalisation. \
          Most style guides recommend upper case for data types to distinguish them from column names."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Capitalisation] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Capitalisation]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
         if let Some(val) = settings.get("capitalisation_policy") {
@@ -57,7 +67,10 @@ impl Rule for RuleCP05 {
         for token in tokens {
             let text = token.text.as_str();
             // Skip numeric parts like VARCHAR(255)
-            if text.chars().all(|c| c.is_ascii_digit() || c == '(' || c == ')' || c == ',') {
+            if text
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == '(' || c == ')' || c == ',')
+            {
                 continue;
             }
 

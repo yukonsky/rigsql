@@ -18,15 +18,25 @@ impl Default for RuleLT02 {
 }
 
 impl Rule for RuleLT02 {
-    fn code(&self) -> &'static str { "LT02" }
-    fn name(&self) -> &'static str { "layout.indent" }
-    fn description(&self) -> &'static str { "Incorrect indentation." }
+    fn code(&self) -> &'static str {
+        "LT02"
+    }
+    fn name(&self) -> &'static str {
+        "layout.indent"
+    }
+    fn description(&self) -> &'static str {
+        "Incorrect indentation."
+    }
     fn explanation(&self) -> &'static str {
         "SQL should use consistent indentation. Each indentation level should use \
          the same number of spaces (default 4). Tabs should not be mixed with spaces."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
         if let Some(val) = settings.get("indent_unit") {

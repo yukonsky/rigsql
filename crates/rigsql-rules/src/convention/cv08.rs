@@ -10,16 +10,26 @@ use crate::violation::LintViolation;
 pub struct RuleCV08;
 
 impl Rule for RuleCV08 {
-    fn code(&self) -> &'static str { "CV08" }
-    fn name(&self) -> &'static str { "convention.left_join" }
-    fn description(&self) -> &'static str { "Use LEFT JOIN instead of RIGHT JOIN." }
+    fn code(&self) -> &'static str {
+        "CV08"
+    }
+    fn name(&self) -> &'static str {
+        "convention.left_join"
+    }
+    fn description(&self) -> &'static str {
+        "Use LEFT JOIN instead of RIGHT JOIN."
+    }
     fn explanation(&self) -> &'static str {
         "RIGHT JOIN can always be rewritten as LEFT JOIN by swapping the table order. \
          LEFT JOIN is more intuitive because it reads left-to-right: the 'main' table \
          is on the left, and the 'optional' table is on the right."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Convention] }
-    fn is_fixable(&self) -> bool { false }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Convention]
+    }
+    fn is_fixable(&self) -> bool {
+        false
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::JoinClause])

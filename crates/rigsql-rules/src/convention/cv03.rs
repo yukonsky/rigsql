@@ -11,15 +11,25 @@ use crate::violation::{LintViolation, SourceEdit};
 pub struct RuleCV03;
 
 impl Rule for RuleCV03 {
-    fn code(&self) -> &'static str { "CV03" }
-    fn name(&self) -> &'static str { "convention.trailing_comma_select" }
-    fn description(&self) -> &'static str { "Trailing comma in SELECT clause." }
+    fn code(&self) -> &'static str {
+        "CV03"
+    }
+    fn name(&self) -> &'static str {
+        "convention.trailing_comma_select"
+    }
+    fn description(&self) -> &'static str {
+        "Trailing comma in SELECT clause."
+    }
     fn explanation(&self) -> &'static str {
         "A trailing comma at the end of a SELECT column list (before FROM or end of \
          statement) is a syntax error in most SQL databases. Remove the extraneous comma."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Convention] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Convention]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::SelectClause])

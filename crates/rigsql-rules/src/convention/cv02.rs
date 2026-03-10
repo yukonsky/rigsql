@@ -10,16 +10,26 @@ use crate::violation::LintViolation;
 pub struct RuleCV02;
 
 impl Rule for RuleCV02 {
-    fn code(&self) -> &'static str { "CV02" }
-    fn name(&self) -> &'static str { "convention.coalesce" }
-    fn description(&self) -> &'static str { "Use COALESCE instead of IFNULL or NVL." }
+    fn code(&self) -> &'static str {
+        "CV02"
+    }
+    fn name(&self) -> &'static str {
+        "convention.coalesce"
+    }
+    fn description(&self) -> &'static str {
+        "Use COALESCE instead of IFNULL or NVL."
+    }
     fn explanation(&self) -> &'static str {
         "COALESCE is the ANSI SQL standard function for handling NULL values. \
          IFNULL (MySQL) and NVL (Oracle) are database-specific alternatives. \
          Using COALESCE improves portability and consistency."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Convention] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Convention]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::FunctionCall])

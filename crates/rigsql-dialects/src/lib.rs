@@ -5,8 +5,10 @@ use strum::{Display, EnumString};
 /// Supported SQL dialects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumString)]
 #[strum(ascii_case_insensitive)]
+#[derive(Default)]
 pub enum DialectKind {
     #[strum(serialize = "ansi")]
+    #[default]
     Ansi,
     #[strum(serialize = "postgres", serialize = "postgresql")]
     Postgres,
@@ -27,11 +29,5 @@ impl DialectKind {
             DialectKind::Postgres => LexerConfig::postgres(),
             DialectKind::Tsql => LexerConfig::tsql(),
         }
-    }
-}
-
-impl Default for DialectKind {
-    fn default() -> Self {
-        DialectKind::Ansi
     }
 }

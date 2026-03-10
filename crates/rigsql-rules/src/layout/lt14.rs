@@ -8,15 +8,25 @@ use crate::violation::{LintViolation, SourceEdit};
 pub struct RuleLT14;
 
 impl Rule for RuleLT14 {
-    fn code(&self) -> &'static str { "LT14" }
-    fn name(&self) -> &'static str { "layout.semicolons" }
-    fn description(&self) -> &'static str { "Statements should not end with multiple semicolons." }
+    fn code(&self) -> &'static str {
+        "LT14"
+    }
+    fn name(&self) -> &'static str {
+        "layout.semicolons"
+    }
+    fn description(&self) -> &'static str {
+        "Statements should not end with multiple semicolons."
+    }
     fn explanation(&self) -> &'static str {
         "Each SQL statement should end with exactly one semicolon. Multiple consecutive \
          semicolons (;;) indicate a redundant terminator that should be removed."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::Semicolon])

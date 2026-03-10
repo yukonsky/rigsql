@@ -20,16 +20,26 @@ use crate::violation::LintViolation;
 pub struct RuleCV07;
 
 impl Rule for RuleCV07 {
-    fn code(&self) -> &'static str { "CV07" }
-    fn name(&self) -> &'static str { "convention.prefer_coalesce" }
-    fn description(&self) -> &'static str { "Prefer COALESCE over CASE with IS NULL pattern." }
+    fn code(&self) -> &'static str {
+        "CV07"
+    }
+    fn name(&self) -> &'static str {
+        "convention.prefer_coalesce"
+    }
+    fn description(&self) -> &'static str {
+        "Prefer COALESCE over CASE with IS NULL pattern."
+    }
     fn explanation(&self) -> &'static str {
         "A CASE expression like 'CASE WHEN x IS NULL THEN y ELSE x END' can be \
          simplified to 'COALESCE(x, y)'. COALESCE is more concise and clearly \
          expresses the intent of providing a fallback value for NULL."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Convention] }
-    fn is_fixable(&self) -> bool { false }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Convention]
+    }
+    fn is_fixable(&self) -> bool {
+        false
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::CaseExpression])
@@ -87,9 +97,9 @@ impl Rule for RuleCV07 {
             .collect();
 
         // Look for IsNullExpression in the WHEN condition
-        let has_is_null = when_children.iter().any(|c| {
-            c.segment_type() == SegmentType::IsNullExpression
-        });
+        let has_is_null = when_children
+            .iter()
+            .any(|c| c.segment_type() == SegmentType::IsNullExpression);
 
         if !has_is_null {
             return vec![];

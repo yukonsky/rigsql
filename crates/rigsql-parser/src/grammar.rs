@@ -1,6 +1,4 @@
-use rigsql_core::{
-    NodeSegment, Segment, SegmentType, Token, TokenKind, TokenSegment,
-};
+use rigsql_core::{NodeSegment, Segment, SegmentType, Token, TokenKind, TokenSegment};
 
 use crate::context::ParseContext;
 
@@ -156,9 +154,7 @@ impl Grammar {
 
         // UNION / INTERSECT / EXCEPT (optional, recursive)
         children.extend(Self::eat_trivia_segments(ctx));
-        if ctx.peek_keyword("UNION")
-            || ctx.peek_keyword("INTERSECT")
-            || ctx.peek_keyword("EXCEPT")
+        if ctx.peek_keyword("UNION") || ctx.peek_keyword("INTERSECT") || ctx.peek_keyword("EXCEPT")
         {
             if let Some(set_op) = Self::parse_set_operation(ctx) {
                 children.push(set_op);
@@ -332,9 +328,9 @@ impl Grammar {
                 let save2 = ctx.save();
                 let trivia = Self::eat_trivia_segments(ctx);
                 if ctx.peek_keyword("AS")
-                    || ctx
-                        .peek_non_trivia()
-                        .is_some_and(|t| t.kind == TokenKind::Word && !Self::is_clause_keyword(&t.text))
+                    || ctx.peek_non_trivia().is_some_and(|t| {
+                        t.kind == TokenKind::Word && !Self::is_clause_keyword(&t.text)
+                    })
                 {
                     let mut children = vec![subq];
                     children.extend(trivia);
@@ -1269,10 +1265,7 @@ impl Grammar {
                     if let Some(right) = Self::parse_multiplication_expression(ctx) {
                         children.push(right);
                     }
-                    left = Segment::Node(NodeSegment::new(
-                        SegmentType::BinaryExpression,
-                        children,
-                    ));
+                    left = Segment::Node(NodeSegment::new(SegmentType::BinaryExpression, children));
                     continue;
                 }
             }
@@ -1288,7 +1281,10 @@ impl Grammar {
             let save = ctx.save();
             let trivia = Self::eat_trivia_segments(ctx);
             if let Some(kind) = ctx.peek_kind() {
-                if matches!(kind, TokenKind::Star | TokenKind::Slash | TokenKind::Percent) {
+                if matches!(
+                    kind,
+                    TokenKind::Star | TokenKind::Slash | TokenKind::Percent
+                ) {
                     let op = ctx.advance().unwrap();
                     let mut children = vec![left];
                     children.extend(trivia);
@@ -1297,10 +1293,7 @@ impl Grammar {
                     if let Some(right) = Self::parse_unary_expression(ctx) {
                         children.push(right);
                     }
-                    left = Segment::Node(NodeSegment::new(
-                        SegmentType::BinaryExpression,
-                        children,
-                    ));
+                    left = Segment::Node(NodeSegment::new(SegmentType::BinaryExpression, children));
                     continue;
                 }
             }
@@ -1314,8 +1307,7 @@ impl Grammar {
         if let Some(kind) = ctx.peek_kind() {
             if matches!(kind, TokenKind::Plus | TokenKind::Minus) {
                 let op = ctx.advance().unwrap();
-                let mut children =
-                    vec![Self::token_segment(op, SegmentType::ArithmeticOperator)];
+                let mut children = vec![Self::token_segment(op, SegmentType::ArithmeticOperator)];
                 children.extend(Self::eat_trivia_segments(ctx));
                 if let Some(expr) = Self::parse_primary_expression(ctx) {
                     children.push(expr);
@@ -1684,10 +1676,7 @@ impl Grammar {
             if let Some(args) = Self::parse_paren_block(ctx) {
                 children.push(args);
             }
-            let func = Segment::Node(NodeSegment::new(
-                SegmentType::FunctionCall,
-                children,
-            ));
+            let func = Segment::Node(NodeSegment::new(SegmentType::FunctionCall, children));
 
             // Check for OVER clause (window function)
             let save = ctx.save();
@@ -1982,23 +1971,87 @@ impl Grammar {
     fn eat_trivia_segments(ctx: &mut ParseContext) -> Vec<Segment> {
         ctx.eat_trivia()
             .into_iter()
-            .map(|t| Self::any_token_segment(t))
+            .map(Self::any_token_segment)
             .collect()
     }
 
     /// Sorted list of keywords that must NOT be consumed as implicit aliases.
     const CLAUSE_KEYWORDS: &[&str] = &[
-        "ALTER", "AND", "AS", "BEGIN", "BETWEEN", "BREAK", "CASE", "CATCH",
-        "CLOSE", "COMMIT", "CONTINUE", "CREATE", "CROSS", "CURSOR",
-        "DEALLOCATE", "DECLARE", "DELETE", "DROP", "ELSE", "END", "EXCEPT",
-        "EXEC", "EXECUTE", "EXISTS", "FETCH", "FOR", "FROM", "FULL", "GO",
-        "GOTO", "GROUP", "HAVING", "IF", "IN", "INNER", "INSERT",
-        "INTERSECT", "INTO", "IS", "JOIN", "LEFT", "LIKE", "LIMIT",
-        "MERGE", "NEXT", "NOT", "OFFSET", "ON", "OPEN", "OR", "ORDER",
-        "OUTPUT", "OVER", "PARTITION", "PRINT", "RAISERROR", "RETURN",
-        "RETURNING", "RIGHT", "ROLLBACK", "SELECT", "SET", "TABLE",
-        "THEN", "THROW", "TRUNCATE", "TRY", "UNION", "UPDATE", "USING",
-        "VALUES", "WHEN", "WHERE", "WHILE", "WITH",
+        "ALTER",
+        "AND",
+        "AS",
+        "BEGIN",
+        "BETWEEN",
+        "BREAK",
+        "CASE",
+        "CATCH",
+        "CLOSE",
+        "COMMIT",
+        "CONTINUE",
+        "CREATE",
+        "CROSS",
+        "CURSOR",
+        "DEALLOCATE",
+        "DECLARE",
+        "DELETE",
+        "DROP",
+        "ELSE",
+        "END",
+        "EXCEPT",
+        "EXEC",
+        "EXECUTE",
+        "EXISTS",
+        "FETCH",
+        "FOR",
+        "FROM",
+        "FULL",
+        "GO",
+        "GOTO",
+        "GROUP",
+        "HAVING",
+        "IF",
+        "IN",
+        "INNER",
+        "INSERT",
+        "INTERSECT",
+        "INTO",
+        "IS",
+        "JOIN",
+        "LEFT",
+        "LIKE",
+        "LIMIT",
+        "MERGE",
+        "NEXT",
+        "NOT",
+        "OFFSET",
+        "ON",
+        "OPEN",
+        "OR",
+        "ORDER",
+        "OUTPUT",
+        "OVER",
+        "PARTITION",
+        "PRINT",
+        "RAISERROR",
+        "RETURN",
+        "RETURNING",
+        "RIGHT",
+        "ROLLBACK",
+        "SELECT",
+        "SET",
+        "TABLE",
+        "THEN",
+        "THROW",
+        "TRUNCATE",
+        "TRY",
+        "UNION",
+        "UPDATE",
+        "USING",
+        "VALUES",
+        "WHEN",
+        "WHERE",
+        "WHILE",
+        "WITH",
     ];
 
     fn is_clause_keyword(word: &str) -> bool {

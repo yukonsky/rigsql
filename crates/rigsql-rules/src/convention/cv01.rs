@@ -28,16 +28,26 @@ impl Default for RuleCV01 {
 }
 
 impl Rule for RuleCV01 {
-    fn code(&self) -> &'static str { "CV01" }
-    fn name(&self) -> &'static str { "convention.not_equal" }
-    fn description(&self) -> &'static str { "Consistent not-equal operator." }
+    fn code(&self) -> &'static str {
+        "CV01"
+    }
+    fn name(&self) -> &'static str {
+        "convention.not_equal"
+    }
+    fn description(&self) -> &'static str {
+        "Consistent not-equal operator."
+    }
     fn explanation(&self) -> &'static str {
         "SQL has two not-equal operators: '!=' and '<>'. Using one consistently \
          improves readability. The ANSI standard uses '<>' but '!=' is more common \
          in modern SQL and programming."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Convention] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Convention]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
         if let Some(val) = settings.get("preferred_not_equal") {

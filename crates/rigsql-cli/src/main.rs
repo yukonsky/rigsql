@@ -3,11 +3,15 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use rigsql_config::{Config, filter_noqa};
+use rigsql_config::{filter_noqa, Config};
 use rigsql_core::Segment;
 use rigsql_dialects::DialectKind;
 use rigsql_output::HumanFormatter;
-use rigsql_rules::{default_rules, rule::{apply_fixes, lint}, Rule};
+use rigsql_rules::{
+    default_rules,
+    rule::{apply_fixes, lint},
+    Rule,
+};
 
 #[derive(Parser)]
 #[command(name = "rigsql", version, about = "Fast SQL linter written in Rust")]
@@ -210,17 +214,15 @@ fn cmd_fix(files: &[String], dialect: DialectKind, dry_run: bool, _force: bool) 
         let mut rounds = 0;
         let max_rounds = 10;
 
-        loop {
-            let cst = match parser.parse(&current) {
-                Ok(c) => c,
-                Err(_) => break,
-            };
-
+        while let Ok(cst) = parser.parse(&current) {
             let mut violations = lint(&cst, &current, &all_rules);
             filter_noqa(&current, &mut violations);
 
             // Only keep fixable violations (those with edits)
-            let fixable: Vec<_> = violations.into_iter().filter(|v| !v.fixes.is_empty()).collect();
+            let fixable: Vec<_> = violations
+                .into_iter()
+                .filter(|v| !v.fixes.is_empty())
+                .collect();
             if fixable.is_empty() {
                 break;
             }
@@ -325,11 +327,8 @@ fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color
 
     match format {
         LintFormat::Human => {
-            let summary = formatter.format_summary(
-                sql_files.len(),
-                files_with_violations,
-                total_violations,
-            );
+            let summary =
+                formatter.format_summary(sql_files.len(), files_with_violations, total_violations);
             print!("{summary}");
         }
         LintFormat::Json => {
@@ -337,16 +336,23 @@ fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color
                 .iter()
                 .map(|(p, s, v)| (p.as_path(), s.as_str(), v.as_slice()))
                 .collect();
-            println!("{}", rigsql_output::JsonFormatter::format_with_rules(&refs, &rules));
+            println!(
+                "{}",
+                rigsql_output::JsonFormatter::format_with_rules(&refs, &rules)
+            );
         }
     }
 
-    if total_violations > 0 { 1 } else { 0 }
+    if total_violations > 0 {
+        1
+    } else {
+        0
+    }
 }
 
 fn cmd_rules() {
     let rules = default_rules();
-    println!("{:<6} {:<30} {}", "Code", "Name", "Description");
+    println!("{:<6} {:<30} Description", "Code", "Name");
     println!("{}", "-".repeat(80));
     for rule in &rules {
         println!(
@@ -389,10 +395,12 @@ fn read_file_or_stdin(file: &str) -> String {
     if file == "-" {
         use std::io::Read;
         let mut buf = String::new();
-        std::io::stdin().read_to_string(&mut buf).unwrap_or_else(|e| {
-            eprintln!("Error reading stdin: {e}");
-            process::exit(2);
-        });
+        std::io::stdin()
+            .read_to_string(&mut buf)
+            .unwrap_or_else(|e| {
+                eprintln!("Error reading stdin: {e}");
+                process::exit(2);
+            });
         buf
     } else {
         fs::read_to_string(file).unwrap_or_else(|e| {
@@ -435,8 +443,7 @@ fn cst_to_json(segment: &Segment) -> serde_json::Value {
             })
         }
         Segment::Node(n) => {
-            let children: Vec<serde_json::Value> =
-                n.children.iter().map(|c| cst_to_json(c)).collect();
+            let children: Vec<serde_json::Value> = n.children.iter().map(cst_to_json).collect();
             serde_json::json!({
                 "type": format!("{:?}", n.segment_type),
                 "children": children,

@@ -11,16 +11,26 @@ use crate::violation::LintViolation;
 pub struct RuleCV10;
 
 impl Rule for RuleCV10 {
-    fn code(&self) -> &'static str { "CV10" }
-    fn name(&self) -> &'static str { "convention.union_null" }
-    fn description(&self) -> &'static str { "Consistent use of NULL in UNION." }
+    fn code(&self) -> &'static str {
+        "CV10"
+    }
+    fn name(&self) -> &'static str {
+        "convention.union_null"
+    }
+    fn description(&self) -> &'static str {
+        "Consistent use of NULL in UNION."
+    }
     fn explanation(&self) -> &'static str {
         "When using NULL in a UNION query, the type of the NULL column is ambiguous. \
          Use an explicit CAST (e.g. CAST(NULL AS INTEGER)) to make the intent clear \
          and avoid potential type-mismatch issues across UNION branches."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Convention] }
-    fn is_fixable(&self) -> bool { false }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Convention]
+    }
+    fn is_fixable(&self) -> bool {
+        false
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::RootOnly
@@ -35,11 +45,7 @@ impl Rule for RuleCV10 {
 
 /// Recursively walk the tree looking for SelectStatements that are part of a
 /// UNION. When we find one, scan its SelectClause items for bare NullLiterals.
-fn find_union_nulls(
-    segment: &Segment,
-    in_union: bool,
-    violations: &mut Vec<LintViolation>,
-) {
+fn find_union_nulls(segment: &Segment, in_union: bool, violations: &mut Vec<LintViolation>) {
     let children = segment.children();
 
     // Detect if this node contains a UNION keyword among its children,

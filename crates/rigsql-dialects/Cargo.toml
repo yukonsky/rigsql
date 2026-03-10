@@ -2,6 +2,9 @@
 name = "rigsql-dialects"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SQL dialect definitions (ANSI, TSQL, PostgreSQL) for rigsql"
 
 [dependencies]
 rigsql-core = { workspace = true }

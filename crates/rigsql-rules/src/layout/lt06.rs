@@ -11,16 +11,26 @@ use crate::violation::{LintViolation, SourceEdit};
 pub struct RuleLT06;
 
 impl Rule for RuleLT06 {
-    fn code(&self) -> &'static str { "LT06" }
-    fn name(&self) -> &'static str { "layout.function_paren" }
-    fn description(&self) -> &'static str { "Function name not followed immediately by parenthesis." }
+    fn code(&self) -> &'static str {
+        "LT06"
+    }
+    fn name(&self) -> &'static str {
+        "layout.function_paren"
+    }
+    fn description(&self) -> &'static str {
+        "Function name not followed immediately by parenthesis."
+    }
     fn explanation(&self) -> &'static str {
         "In SQL, function calls should have the opening parenthesis immediately after \
          the function name with no intervening whitespace. For example, write COUNT(*) \
          rather than COUNT (*)."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::FunctionCall])
@@ -48,9 +58,7 @@ impl Rule for RuleLT06 {
 
         for child in &children[name_idx + 1..] {
             let st = child.segment_type();
-            if st == SegmentType::Whitespace {
-                whitespace_spans.push(child.span());
-            } else if st == SegmentType::Newline {
+            if st == SegmentType::Whitespace || st == SegmentType::Newline {
                 whitespace_spans.push(child.span());
             } else if st == SegmentType::LParen || st == SegmentType::FunctionArgs {
                 found_lparen = true;

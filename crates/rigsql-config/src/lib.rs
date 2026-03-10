@@ -14,7 +14,7 @@ pub enum ConfigError {
 }
 
 /// Parsed rigsql / sqlfluff configuration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Config {
     /// SQL dialect name (e.g. "ansi", "tsql", "postgres").
     pub dialect: Option<String>,
@@ -24,17 +24,6 @@ pub struct Config {
     pub exclude_rules: Vec<String>,
     /// Per-rule settings: rule_name -> key -> value.
     pub rules: HashMap<String, HashMap<String, String>>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            dialect: None,
-            max_line_length: None,
-            exclude_rules: Vec::new(),
-            rules: HashMap::new(),
-        }
-    }
 }
 
 /// Which config file was found.

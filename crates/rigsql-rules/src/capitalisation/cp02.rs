@@ -28,15 +28,25 @@ impl Default for RuleCP02 {
 }
 
 impl Rule for RuleCP02 {
-    fn code(&self) -> &'static str { "CP02" }
-    fn name(&self) -> &'static str { "capitalisation.identifiers" }
-    fn description(&self) -> &'static str { "Unquoted identifiers must be consistently capitalised." }
+    fn code(&self) -> &'static str {
+        "CP02"
+    }
+    fn name(&self) -> &'static str {
+        "capitalisation.identifiers"
+    }
+    fn description(&self) -> &'static str {
+        "Unquoted identifiers must be consistently capitalised."
+    }
     fn explanation(&self) -> &'static str {
         "Unquoted identifiers (table names, column names) should use consistent capitalisation. \
          Most SQL style guides recommend lower_snake_case for identifiers."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Capitalisation] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Capitalisation]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::Identifier])

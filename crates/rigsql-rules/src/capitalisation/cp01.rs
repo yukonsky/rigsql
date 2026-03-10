@@ -28,16 +28,26 @@ impl Default for RuleCP01 {
 }
 
 impl Rule for RuleCP01 {
-    fn code(&self) -> &'static str { "CP01" }
-    fn name(&self) -> &'static str { "capitalisation.keywords" }
-    fn description(&self) -> &'static str { "Keywords must be consistently capitalised." }
+    fn code(&self) -> &'static str {
+        "CP01"
+    }
+    fn name(&self) -> &'static str {
+        "capitalisation.keywords"
+    }
+    fn description(&self) -> &'static str {
+        "Keywords must be consistently capitalised."
+    }
     fn explanation(&self) -> &'static str {
         "SQL keywords like SELECT, FROM, WHERE should use consistent capitalisation. \
          Mixed case reduces readability. Most style guides recommend UPPER case keywords \
          to distinguish them from identifiers."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Capitalisation] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Capitalisation]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::Keyword, SegmentType::Unparsable])

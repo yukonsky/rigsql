@@ -10,16 +10,26 @@ use crate::violation::LintViolation;
 pub struct RuleCV04;
 
 impl Rule for RuleCV04 {
-    fn code(&self) -> &'static str { "CV04" }
-    fn name(&self) -> &'static str { "convention.count" }
-    fn description(&self) -> &'static str { "Use consistent syntax to count all rows." }
+    fn code(&self) -> &'static str {
+        "CV04"
+    }
+    fn name(&self) -> &'static str {
+        "convention.count"
+    }
+    fn description(&self) -> &'static str {
+        "Use consistent syntax to count all rows."
+    }
     fn explanation(&self) -> &'static str {
         "COUNT(*) is the standard and most readable way to count all rows. \
          COUNT(1) and COUNT(0) produce the same result but are less clear in intent. \
          Using COUNT(*) consistently makes the code more readable."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Convention] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Convention]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::FunctionCall])

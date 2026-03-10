@@ -11,16 +11,26 @@ use crate::violation::LintViolation;
 pub struct RuleLT10;
 
 impl Rule for RuleLT10 {
-    fn code(&self) -> &'static str { "LT10" }
-    fn name(&self) -> &'static str { "layout.select_modifier" }
-    fn description(&self) -> &'static str { "SELECT modifiers (DISTINCT, ALL) must be on same line as SELECT." }
+    fn code(&self) -> &'static str {
+        "LT10"
+    }
+    fn name(&self) -> &'static str {
+        "layout.select_modifier"
+    }
+    fn description(&self) -> &'static str {
+        "SELECT modifiers (DISTINCT, ALL) must be on same line as SELECT."
+    }
     fn explanation(&self) -> &'static str {
         "SELECT modifiers such as DISTINCT or ALL should appear on the same line as \
          the SELECT keyword. Placing them on a separate line is confusing and reduces \
          readability."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { false }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        false
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::SelectClause])
@@ -54,17 +64,17 @@ impl Rule for RuleLT10 {
                 continue;
             } else if let Segment::Token(t) = child {
                 let text = t.token.text.as_str();
-                if text.eq_ignore_ascii_case("DISTINCT") || text.eq_ignore_ascii_case("ALL") {
-                    if has_newline {
-                        return vec![LintViolation::new(
-                            self.code(),
-                            format!(
-                                "'{}' must be on the same line as SELECT.",
-                                text.to_uppercase()
-                            ),
-                            t.token.span,
-                        )];
-                    }
+                if (text.eq_ignore_ascii_case("DISTINCT") || text.eq_ignore_ascii_case("ALL"))
+                    && has_newline
+                {
+                    return vec![LintViolation::new(
+                        self.code(),
+                        format!(
+                            "'{}' must be on the same line as SELECT.",
+                            text.to_uppercase()
+                        ),
+                        t.token.span,
+                    )];
                 }
                 // Whether it was a modifier or not, stop looking
                 break;

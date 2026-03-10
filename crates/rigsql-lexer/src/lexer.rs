@@ -15,7 +15,7 @@ pub enum LexerError {
 }
 
 /// Dialect-specific lexer configuration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LexerConfig {
     /// Enable `::` as cast operator (PostgreSQL).
     pub double_colon: bool,
@@ -27,18 +27,6 @@ pub struct LexerConfig {
     pub double_at: bool,
     /// Enable dollar-quoted strings `$$...$$` (PostgreSQL).
     pub dollar_quoting: bool,
-}
-
-impl Default for LexerConfig {
-    fn default() -> Self {
-        Self {
-            double_colon: false,
-            bracket_identifiers: false,
-            backtick_identifiers: false,
-            double_at: false,
-            dollar_quoting: false,
-        }
-    }
 }
 
 impl LexerConfig {
@@ -175,22 +163,16 @@ impl<'a> Lexer<'a> {
             b'"' => self.lex_quoted_identifier(start, b'"'),
 
             // Bracket-quoted identifier: [name] (SQL Server)
-            b'[' if self.config.bracket_identifiers => {
-                self.lex_bracket_identifier(start)
-            }
+            b'[' if self.config.bracket_identifiers => self.lex_bracket_identifier(start),
 
             // Backtick identifier: `name` (MySQL)
-            b'`' if self.config.backtick_identifiers => {
-                self.lex_quoted_identifier(start, b'`')
-            }
+            b'`' if self.config.backtick_identifiers => self.lex_quoted_identifier(start, b'`'),
 
             // Numbers
             b'0'..=b'9' => self.lex_number(start),
 
             // Dot (could be start of .123 numeric or just dot)
-            b'.' if self.peek_at(1).is_some_and(|b| b.is_ascii_digit()) => {
-                self.lex_number(start)
-            }
+            b'.' if self.peek_at(1).is_some_and(|b| b.is_ascii_digit()) => self.lex_number(start),
 
             // Single-character operators & punctuation
             b'.' => {
@@ -288,7 +270,10 @@ impl<'a> Lexer<'a> {
             // : named parameter
             b':' => {
                 self.pos += 1;
-                if self.peek().is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_') {
+                if self
+                    .peek()
+                    .is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_')
+                {
                     while self
                         .peek()
                         .is_some_and(|b| b.is_ascii_alphanumeric() || b == b'_')
@@ -378,11 +363,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_quoted_identifier(
-        &mut self,
-        start: usize,
-        quote: u8,
-    ) -> Result<Token, LexerError> {
+    fn lex_quoted_identifier(&mut self, start: usize, quote: u8) -> Result<Token, LexerError> {
         self.pos += 1; // skip opening quote
         loop {
             match self.peek() {
@@ -539,7 +520,11 @@ impl<'a> Lexer<'a> {
 
     fn make_token(&self, kind: TokenKind, start: usize) -> Token {
         let text = &self.source[start..self.pos];
-        Token::new(kind, Span::new(start as u32, self.pos as u32), SmolStr::new(text))
+        Token::new(
+            kind,
+            Span::new(start as u32, self.pos as u32),
+            SmolStr::new(text),
+        )
     }
 }
 
@@ -582,14 +567,14 @@ mod tests {
         assert_eq!(
             k,
             vec![
-                TokenKind::Word,          // SELECT
-                TokenKind::Whitespace,    // ' '
-                TokenKind::Star,          // *
-                TokenKind::Whitespace,    // ' '
-                TokenKind::Word,          // FROM
-                TokenKind::Whitespace,    // ' '
-                TokenKind::Word,          // users
-                TokenKind::Semicolon,     // ;
+                TokenKind::Word,       // SELECT
+                TokenKind::Whitespace, // ' '
+                TokenKind::Star,       // *
+                TokenKind::Whitespace, // ' '
+                TokenKind::Word,       // FROM
+                TokenKind::Whitespace, // ' '
+                TokenKind::Word,       // users
+                TokenKind::Semicolon,  // ;
                 TokenKind::Eof,
             ]
         );

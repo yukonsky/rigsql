@@ -10,15 +10,25 @@ use crate::violation::{LintViolation, SourceEdit};
 pub struct RuleCP03;
 
 impl Rule for RuleCP03 {
-    fn code(&self) -> &'static str { "CP03" }
-    fn name(&self) -> &'static str { "capitalisation.functions" }
-    fn description(&self) -> &'static str { "Function names must be consistently capitalised." }
+    fn code(&self) -> &'static str {
+        "CP03"
+    }
+    fn name(&self) -> &'static str {
+        "capitalisation.functions"
+    }
+    fn description(&self) -> &'static str {
+        "Function names must be consistently capitalised."
+    }
     fn explanation(&self) -> &'static str {
         "Function names like COUNT, SUM, COALESCE should be consistently capitalised. \
          Whether upper or lower depends on your team's convention."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Capitalisation] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Capitalisation]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::FunctionCall])
@@ -45,8 +55,12 @@ impl Rule for RuleCP03 {
         // Skip if it's all upper or all lower (both are acceptable in many configs)
         // Default: we don't enforce function name case (many projects use either)
         // Only flag mixed case
-        let is_all_upper = text.chars().all(|c| !c.is_ascii_alphabetic() || c.is_ascii_uppercase());
-        let is_all_lower = text.chars().all(|c| !c.is_ascii_alphabetic() || c.is_ascii_lowercase());
+        let is_all_upper = text
+            .chars()
+            .all(|c| !c.is_ascii_alphabetic() || c.is_ascii_uppercase());
+        let is_all_lower = text
+            .chars()
+            .all(|c| !c.is_ascii_alphabetic() || c.is_ascii_lowercase());
         if is_all_upper || is_all_lower {
             return vec![];
         }
@@ -71,7 +85,10 @@ impl RuleCP03 {
                 SegmentType::ColumnRef => {
                     // qualified function: schema.func — get last identifier
                     let inner = child.children();
-                    return inner.iter().rev().find(|s| s.segment_type() == SegmentType::Identifier);
+                    return inner
+                        .iter()
+                        .rev()
+                        .find(|s| s.segment_type() == SegmentType::Identifier);
                 }
                 _ if child.segment_type().is_trivia() => continue,
                 _ => break,
