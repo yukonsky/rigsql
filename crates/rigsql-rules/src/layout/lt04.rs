@@ -202,10 +202,7 @@ fn build_leading_to_trailing_fix(ctx: &RuleContext) -> Vec<SourceEdit> {
         // Insert comma after the previous element
         SourceEdit::insert(insert_pos, ","),
         // Replace the whitespace + comma + whitespace with just whitespace
-        SourceEdit::replace(
-            rigsql_core::Span::new(delete_start, delete_end),
-            indent,
-        ),
+        SourceEdit::replace(rigsql_core::Span::new(delete_start, delete_end), indent),
     ]
 }
 
