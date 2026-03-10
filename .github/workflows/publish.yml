@@ -32,6 +32,7 @@ jobs:
 
       # Publish in dependency order — each crate needs its dependencies on crates.io first.
       # Skips already-published crates (safe for rerun). Retries on rate limits.
+      # Returns: 0 = published, 2 = skipped (already exists), 1 = failed
       - name: Publish all crates
         run: |
           publish_crate() {
@@ -46,10 +47,9 @@ jobs:
                 return 0
               }
               echo "$output"
-              # Already published — skip
               if echo "$output" | grep -qE "already (uploaded|exists)"; then
                 echo "$crate already published, skipping"
-                return 0
+                return 2
               fi
               retry=$((retry + 1))
               if [ $retry -lt $max_retries ]; then
@@ -75,5 +75,11 @@ jobs:
 
           for crate in "${CRATES[@]}"; do
             publish_crate "$crate"
-            sleep 60
+            rc=$?
+            if [ $rc -eq 1 ]; then
+              exit 1
+            elif [ $rc -eq 0 ]; then
+              sleep 60
+            fi
+            # rc=2 (skipped): no wait needed
           done
