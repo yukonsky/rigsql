@@ -1,7 +1,7 @@
 use rigsql_core::{Segment, SegmentType, TokenKind};
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::LintViolation;
+use crate::violation::{LintViolation, SourceEdit};
 
 /// CV01: Use consistent not-equal operator.
 ///
@@ -73,17 +73,19 @@ impl Rule for RuleCV01 {
         let text = t.token.text.as_str();
         match self.preferred {
             NotEqualStyle::CStyle if text == "<>" => {
-                vec![LintViolation::new(
+                vec![LintViolation::with_fix(
                     self.code(),
                     "Use '!=' instead of '<>'.",
                     t.token.span,
+                    vec![SourceEdit::replace(t.token.span, "!=")],
                 )]
             }
             NotEqualStyle::AnsiStyle if text == "!=" => {
-                vec![LintViolation::new(
+                vec![LintViolation::with_fix(
                     self.code(),
                     "Use '<>' instead of '!='.",
                     t.token.span,
+                    vec![SourceEdit::replace(t.token.span, "<>")],
                 )]
             }
             _ => vec![],

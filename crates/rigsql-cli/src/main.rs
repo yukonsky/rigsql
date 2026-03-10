@@ -197,6 +197,7 @@ fn cmd_fix(files: &[String], dialect: DialectKind, dry_run: bool, _force: bool) 
 
     let all_rules = build_rules(files);
     let parser = dialect.parser();
+    let dialect_str = dialect.as_str();
     let mut fixed_count = 0;
     let mut file_count = 0;
 
@@ -215,7 +216,7 @@ fn cmd_fix(files: &[String], dialect: DialectKind, dry_run: bool, _force: bool) 
         let max_rounds = 10;
 
         while let Ok(cst) = parser.parse(&current) {
-            let mut violations = lint(&cst, &current, &all_rules);
+            let mut violations = lint(&cst, &current, &all_rules, dialect_str);
             filter_noqa(&current, &mut violations);
 
             // Only keep fixable violations (those with edits)
@@ -279,6 +280,7 @@ fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color
     let rules = build_rules(files);
 
     let parser = dialect.parser();
+    let dialect_str = dialect.as_str();
     let formatter = HumanFormatter::new(!no_color);
 
     let mut total_violations = 0;
@@ -302,7 +304,7 @@ fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color
             }
         };
 
-        let mut violations = lint(&cst, &source, &rules);
+        let mut violations = lint(&cst, &source, &rules, dialect_str);
 
         // Apply noqa filtering
         filter_noqa(&source, &mut violations);

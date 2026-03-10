@@ -30,4 +30,13 @@ impl DialectKind {
             DialectKind::Tsql => LexerConfig::tsql(),
         }
     }
+
+    /// Returns the dialect name as a static string slice.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DialectKind::Ansi => "ansi",
+            DialectKind::Postgres => "postgres",
+            DialectKind::Tsql => "tsql",
+        }
+    }
 }

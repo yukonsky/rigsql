@@ -37,6 +37,8 @@ pub struct RuleContext<'a> {
     pub index_in_parent: usize,
     /// Full source text.
     pub source: &'a str,
+    /// SQL dialect name (e.g. "ansi", "postgres", "tsql").
+    pub dialect: &'a str,
 }
 
 /// Trait that all lint rules must implement.
@@ -71,7 +73,12 @@ pub trait Rule: Send + Sync {
 }
 
 /// Run all rules against a parsed CST.
-pub fn lint(root: &Segment, source: &str, rules: &[Box<dyn Rule>]) -> Vec<LintViolation> {
+pub fn lint(
+    root: &Segment,
+    source: &str,
+    rules: &[Box<dyn Rule>],
+    dialect: &str,
+) -> Vec<LintViolation> {
     let mut violations = Vec::new();
 
     for rule in rules {
@@ -84,6 +91,7 @@ pub fn lint(root: &Segment, source: &str, rules: &[Box<dyn Rule>]) -> Vec<LintVi
                     siblings: std::slice::from_ref(root),
                     index_in_parent: 0,
                     source,
+                    dialect,
                 };
                 violations.extend(rule.eval(&ctx));
             }
@@ -94,6 +102,7 @@ pub fn lint(root: &Segment, source: &str, rules: &[Box<dyn Rule>]) -> Vec<LintVi
                     None,
                     root,
                     source,
+                    dialect,
                     rule.as_ref(),
                     types,
                     &mut violations,
@@ -113,6 +122,7 @@ fn walk_and_lint_indexed(
     parent: Option<&Segment>,
     root: &Segment,
     source: &str,
+    dialect: &str,
     rule: &dyn Rule,
     types: &[SegmentType],
     violations: &mut Vec<LintViolation>,
@@ -129,6 +139,7 @@ fn walk_and_lint_indexed(
             siblings,
             index_in_parent,
             source,
+            dialect,
         };
         violations.extend(rule.eval(&ctx));
     }
@@ -141,6 +152,7 @@ fn walk_and_lint_indexed(
             Some(segment),
             root,
             source,
+            dialect,
             rule,
             types,
             violations,

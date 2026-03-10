@@ -1,7 +1,7 @@
 use rigsql_core::SegmentType;
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::LintViolation;
+use crate::violation::{LintViolation, SourceEdit};
 
 /// LT03: Operators should be followed by a single space.
 ///
@@ -45,10 +45,11 @@ impl Rule for RuleLT03 {
         if ctx.index_in_parent > 0 {
             let prev = &ctx.siblings[ctx.index_in_parent - 1];
             if prev.segment_type() != SegmentType::Whitespace {
-                violations.push(LintViolation::new(
+                violations.push(LintViolation::with_fix(
                     self.code(),
                     "Missing space before operator.",
                     span,
+                    vec![SourceEdit::insert(span.start, " ")],
                 ));
             }
         }
@@ -57,10 +58,11 @@ impl Rule for RuleLT03 {
         if ctx.index_in_parent + 1 < ctx.siblings.len() {
             let next = &ctx.siblings[ctx.index_in_parent + 1];
             if next.segment_type() != SegmentType::Whitespace {
-                violations.push(LintViolation::new(
+                violations.push(LintViolation::with_fix(
                     self.code(),
                     "Missing space after operator.",
                     span,
+                    vec![SourceEdit::insert(span.end, " ")],
                 ));
             }
         }
