@@ -2214,9 +2214,7 @@ impl Grammar {
                 children.push(Self::token_segment(catch_kw, SegmentType::Keyword));
             }
 
-            Self::parse_statement_list(ctx, &mut children, |c| {
-                c.peek_keywords(&["END", "CATCH"])
-            });
+            Self::parse_statement_list(ctx, &mut children, |c| c.peek_keywords(&["END", "CATCH"]));
 
             // END CATCH
             children.extend(Self::eat_trivia_segments(ctx));
@@ -2508,12 +2506,37 @@ impl Grammar {
 
     /// Keywords that can start a new statement or act as block terminators.
     const STATEMENT_KEYWORDS: &'static [&'static str] = &[
-        "SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "WITH",
-        "DECLARE", "SET", "IF", "BEGIN", "WHILE", "EXEC", "EXECUTE",
-        "RETURN", "PRINT", "THROW", "RAISERROR", "GO",
-        "END", "ELSE",
-        "USE", "TRUNCATE", "OPEN", "CLOSE", "DEALLOCATE", "FETCH",
-        "BREAK", "CONTINUE", "MERGE",
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "CREATE",
+        "DROP",
+        "ALTER",
+        "WITH",
+        "DECLARE",
+        "SET",
+        "IF",
+        "BEGIN",
+        "WHILE",
+        "EXEC",
+        "EXECUTE",
+        "RETURN",
+        "PRINT",
+        "THROW",
+        "RAISERROR",
+        "GO",
+        "END",
+        "ELSE",
+        "USE",
+        "TRUNCATE",
+        "OPEN",
+        "CLOSE",
+        "DEALLOCATE",
+        "FETCH",
+        "BREAK",
+        "CONTINUE",
+        "MERGE",
     ];
 
     /// Check if current token looks like the start of a new statement.
