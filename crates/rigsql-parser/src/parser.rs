@@ -46,6 +46,10 @@ mod tests {
         Parser::default().parse(sql).unwrap()
     }
 
+    fn parse_tsql(sql: &str) -> Segment {
+        Parser::new(LexerConfig::tsql()).parse(sql).unwrap()
+    }
+
     fn assert_type(seg: &Segment, expected: SegmentType) {
         assert_eq!(
             seg.segment_type(),
@@ -65,6 +69,20 @@ mod tests {
             }
         });
         result.map(|p| unsafe { &*p })
+    }
+
+    fn assert_no_unparsable(seg: &Segment) {
+        let mut unparsable = Vec::new();
+        seg.walk(&mut |s| {
+            if s.segment_type() == SegmentType::Unparsable {
+                unparsable.push(s.raw());
+            }
+        });
+        assert!(
+            unparsable.is_empty(),
+            "Found Unparsable segments: {:?}",
+            unparsable
+        );
     }
 
     #[test]
@@ -183,6 +201,253 @@ mod tests {
     fn test_roundtrip_complex() {
         let sql = "WITH cte AS (\n  SELECT id, name\n  FROM users\n  WHERE active = TRUE\n)\nSELECT cte.id, cte.name\nFROM cte\nINNER JOIN orders ON cte.id = orders.user_id\nWHERE orders.total > 100\nORDER BY cte.name ASC\nLIMIT 10;";
         let cst = parse(sql);
+        assert_eq!(cst.raw(), sql);
+    }
+
+    // ── TSQL Tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_tsql_declare_variable() {
+        let cst = parse_tsql("DECLARE @id INT;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::DeclareStatement).is_some());
+        assert_eq!(cst.raw(), "DECLARE @id INT;");
+    }
+
+    #[test]
+    fn test_tsql_declare_with_default() {
+        let cst = parse_tsql("DECLARE @name VARCHAR(100) = 'test';");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::DeclareStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_declare_multiple() {
+        let cst = parse_tsql("DECLARE @a INT, @b VARCHAR(50);");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::DeclareStatement).is_some());
+        assert_eq!(cst.raw(), "DECLARE @a INT, @b VARCHAR(50);");
+    }
+
+    #[test]
+    fn test_tsql_declare_table_variable() {
+        let cst = parse_tsql("DECLARE @t TABLE (id INT, name VARCHAR(100));");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::DeclareStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_declare_cursor() {
+        let cst = parse_tsql("DECLARE cur CURSOR FOR SELECT id FROM users;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::DeclareStatement).is_some());
+        assert!(find_type(&cst, SegmentType::SelectStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_set_variable() {
+        let cst = parse_tsql("SET @id = 42;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::SetVariableStatement).is_some());
+        assert_eq!(cst.raw(), "SET @id = 42;");
+    }
+
+    #[test]
+    fn test_tsql_set_option() {
+        let cst = parse_tsql("SET NOCOUNT ON;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::SetVariableStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_if_else() {
+        let sql = "IF @x > 0\n    SELECT 1;\nELSE\n    SELECT 2;";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::IfStatement).is_some());
+        assert_eq!(cst.raw(), sql);
+    }
+
+    #[test]
+    fn test_tsql_if_begin_end() {
+        let sql = "IF @x > 0\nBEGIN\n    SELECT 1;\n    SELECT 2;\nEND";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::IfStatement).is_some());
+        assert!(find_type(&cst, SegmentType::BeginEndBlock).is_some());
+    }
+
+    #[test]
+    fn test_tsql_begin_end() {
+        let sql = "BEGIN\n    SELECT 1;\n    SELECT 2;\nEND";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::BeginEndBlock).is_some());
+    }
+
+    #[test]
+    fn test_tsql_while() {
+        let sql = "WHILE @i < 10\nBEGIN\n    SET @i = @i + 1;\nEND";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::WhileStatement).is_some());
+        assert!(find_type(&cst, SegmentType::BeginEndBlock).is_some());
+    }
+
+    #[test]
+    fn test_tsql_try_catch() {
+        let sql = "BEGIN TRY\n    SELECT 1;\nEND TRY\nBEGIN CATCH\n    SELECT 2;\nEND CATCH";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::TryCatchBlock).is_some());
+        assert_eq!(cst.raw(), sql);
+    }
+
+    #[test]
+    fn test_tsql_exec_simple() {
+        let cst = parse_tsql("EXEC sp_help;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::ExecStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_exec_with_params() {
+        let cst = parse_tsql("EXEC dbo.usp_GetUser @id = 1, @name = 'test';");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::ExecStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_execute_keyword() {
+        let cst = parse_tsql("EXECUTE sp_help;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::ExecStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_return() {
+        let cst = parse_tsql("RETURN 0;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::ReturnStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_return_no_value() {
+        let cst = parse_tsql("RETURN;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::ReturnStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_print() {
+        let cst = parse_tsql("PRINT 'hello';");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::PrintStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_throw() {
+        let cst = parse_tsql("THROW 50000, 'Error occurred', 1;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::ThrowStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_throw_rethrow() {
+        let cst = parse_tsql("THROW;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::ThrowStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_raiserror() {
+        let cst = parse_tsql("RAISERROR('Error', 16, 1);");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::RaiserrorStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_raiserror_with_nowait() {
+        let cst = parse_tsql("RAISERROR('Error', 16, 1) WITH NOWAIT;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::RaiserrorStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_go() {
+        let cst = parse_tsql("SELECT 1;\nGO");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::GoStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_go_with_count() {
+        let cst = parse_tsql("GO 5");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::GoStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_simple_statements() {
+        let cst = parse_tsql("USE master;");
+        assert_no_unparsable(&cst);
+        assert_eq!(cst.raw(), "USE master;");
+    }
+
+    #[test]
+    fn test_tsql_roundtrip_complex() {
+        let sql = "SET NOCOUNT ON;\nDECLARE @id INT = 1;\nIF @id > 0\nBEGIN\n    SELECT @id;\n    PRINT 'done';\nEND";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert_eq!(cst.raw(), sql);
+    }
+
+    #[test]
+    fn test_tsql_nested_begin_end() {
+        let sql = "BEGIN\n    BEGIN\n        SELECT 1;\n    END\nEND";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert_eq!(cst.raw(), sql);
+    }
+
+    #[test]
+    fn test_tsql_if_else_begin_end() {
+        let sql = "IF @x = 1\nBEGIN\n    SELECT 1;\nEND\nELSE\nBEGIN\n    SELECT 2;\nEND";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::IfStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_try_catch_with_throw() {
+        let sql = "BEGIN TRY\n    SELECT 1;\nEND TRY\nBEGIN CATCH\n    THROW;\nEND CATCH";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::TryCatchBlock).is_some());
+        assert!(find_type(&cst, SegmentType::ThrowStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_case_inside_begin_end() {
+        let sql = "BEGIN\n    SELECT CASE WHEN @x > 0 THEN 'pos' ELSE 'neg' END;\nEND";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::BeginEndBlock).is_some());
+        assert!(find_type(&cst, SegmentType::CaseExpression).is_some());
+    }
+
+    #[test]
+    fn test_tsql_exec_retval() {
+        let cst = parse_tsql("EXEC @result = dbo.usp_Calculate;");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::ExecStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_multiple_set_options() {
+        let sql = "SET ANSI_NULLS ON;\nSET QUOTED_IDENTIFIER ON;";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
         assert_eq!(cst.raw(), sql);
     }
 }
