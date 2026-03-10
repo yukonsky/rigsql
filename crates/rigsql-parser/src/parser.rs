@@ -3,7 +3,9 @@ use rigsql_lexer::{Lexer, LexerConfig, LexerError};
 use thiserror::Error;
 
 use crate::context::ParseContext;
-use crate::grammar::Grammar;
+#[cfg(test)]
+use crate::grammar::TsqlGrammar;
+use crate::grammar::{AnsiGrammar, Grammar};
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -14,11 +16,15 @@ pub enum ParseError {
 /// High-level SQL parser: source text → CST.
 pub struct Parser {
     lexer_config: LexerConfig,
+    grammar: Box<dyn Grammar>,
 }
 
 impl Parser {
-    pub fn new(lexer_config: LexerConfig) -> Self {
-        Self { lexer_config }
+    pub fn new(lexer_config: LexerConfig, grammar: Box<dyn Grammar>) -> Self {
+        Self {
+            lexer_config,
+            grammar,
+        }
     }
 
     /// Parse SQL source into a CST rooted at a File segment.
@@ -26,14 +32,14 @@ impl Parser {
         let mut lexer = Lexer::new(source, self.lexer_config.clone());
         let tokens = lexer.tokenize()?;
         let mut ctx = ParseContext::new(&tokens, source);
-        let file = Grammar::parse_file(&mut ctx);
+        let file = self.grammar.parse_file(&mut ctx);
         Ok(file)
     }
 }
 
 impl Default for Parser {
     fn default() -> Self {
-        Self::new(LexerConfig::ansi())
+        Self::new(LexerConfig::ansi(), Box::new(AnsiGrammar))
     }
 }
 
@@ -47,7 +53,9 @@ mod tests {
     }
 
     fn parse_tsql(sql: &str) -> Segment {
-        Parser::new(LexerConfig::tsql()).parse(sql).unwrap()
+        Parser::new(LexerConfig::tsql(), Box::new(TsqlGrammar))
+            .parse(sql)
+            .unwrap()
     }
 
     fn assert_type(seg: &Segment, expected: SegmentType) {
