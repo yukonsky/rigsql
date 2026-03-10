@@ -34,6 +34,11 @@ impl Rule for RuleCV06 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
+        // In TSQL, semicolons are optional in most contexts
+        if ctx.dialect == "tsql" {
+            return vec![];
+        }
+
         let children = ctx.segment.children();
         if children.is_empty() {
             return vec![];
