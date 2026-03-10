@@ -32,24 +32,27 @@ jobs:
 
       # Publish in dependency order — each crate needs its dependencies on crates.io first.
       # Skips already-published crates (safe for rerun). Retries on rate limits.
-      # Returns: 0 = published, 2 = skipped (already exists), 1 = failed
       - name: Publish all crates
         run: |
+          PUBLISHED=false
+
           publish_crate() {
             local crate=$1
             local max_retries=5
             local retry=0
+            PUBLISHED=false
             while [ $retry -lt $max_retries ]; do
               echo "Publishing $crate (attempt $((retry + 1))/$max_retries)..."
               local output
               output=$(cargo publish -p "$crate" 2>&1) && {
                 echo "$crate published successfully"
+                PUBLISHED=true
                 return 0
               }
               echo "$output"
               if echo "$output" | grep -qE "already (uploaded|exists)"; then
                 echo "$crate already published, skipping"
-                return 2
+                return 0
               fi
               retry=$((retry + 1))
               if [ $retry -lt $max_retries ]; then
@@ -75,11 +78,7 @@ jobs:
 
           for crate in "${CRATES[@]}"; do
             publish_crate "$crate"
-            rc=$?
-            if [ $rc -eq 1 ]; then
-              exit 1
-            elif [ $rc -eq 0 ]; then
+            if [ "$PUBLISHED" = true ]; then
               sleep 60
             fi
-            # rc=2 (skipped): no wait needed
           done
