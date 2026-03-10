@@ -10,21 +10,28 @@ use crate::violation::{LintViolation, SourceEdit};
 pub struct RuleCP04;
 
 impl Rule for RuleCP04 {
-    fn code(&self) -> &'static str { "CP04" }
-    fn name(&self) -> &'static str { "capitalisation.literals" }
-    fn description(&self) -> &'static str { "Boolean/Null literals must be consistently capitalised." }
+    fn code(&self) -> &'static str {
+        "CP04"
+    }
+    fn name(&self) -> &'static str {
+        "capitalisation.literals"
+    }
+    fn description(&self) -> &'static str {
+        "Boolean/Null literals must be consistently capitalised."
+    }
     fn explanation(&self) -> &'static str {
         "Boolean literals (TRUE, FALSE) and NULL should be consistently capitalised. \
          Using UPPER case for these literals is the most common convention and improves readability."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Capitalisation] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Capitalisation]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
-        CrawlType::Segment(vec![
-            SegmentType::BooleanLiteral,
-            SegmentType::NullLiteral,
-        ])
+        CrawlType::Segment(vec![SegmentType::BooleanLiteral, SegmentType::NullLiteral])
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {

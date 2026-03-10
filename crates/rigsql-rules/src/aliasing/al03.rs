@@ -11,16 +11,26 @@ use crate::violation::LintViolation;
 pub struct RuleAL03;
 
 impl Rule for RuleAL03 {
-    fn code(&self) -> &'static str { "AL03" }
-    fn name(&self) -> &'static str { "aliasing.expression" }
-    fn description(&self) -> &'static str { "Column expression without alias. Use explicit alias." }
+    fn code(&self) -> &'static str {
+        "AL03"
+    }
+    fn name(&self) -> &'static str {
+        "aliasing.expression"
+    }
+    fn description(&self) -> &'static str {
+        "Column expression without alias. Use explicit alias."
+    }
     fn explanation(&self) -> &'static str {
         "Complex expressions in SELECT should have an explicit alias using AS. \
          An unlabeled expression like 'SELECT a + b FROM t' is harder to work with \
          than 'SELECT a + b AS total FROM t'. This makes result sets self-documenting."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Aliasing] }
-    fn is_fixable(&self) -> bool { false }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Aliasing]
+    }
+    fn is_fixable(&self) -> bool {
+        false
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::SelectClause])

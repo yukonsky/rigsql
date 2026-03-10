@@ -10,16 +10,26 @@ use crate::violation::LintViolation;
 pub struct RuleAL05;
 
 impl Rule for RuleAL05 {
-    fn code(&self) -> &'static str { "AL05" }
-    fn name(&self) -> &'static str { "aliasing.unused" }
-    fn description(&self) -> &'static str { "Tables/CTEs should not be unused." }
+    fn code(&self) -> &'static str {
+        "AL05"
+    }
+    fn name(&self) -> &'static str {
+        "aliasing.unused"
+    }
+    fn description(&self) -> &'static str {
+        "Tables/CTEs should not be unused."
+    }
     fn explanation(&self) -> &'static str {
         "Every CTE (Common Table Expression) defined in a WITH clause should be \
          referenced in the main query or in another CTE. Unused CTEs add complexity \
          without benefit and should be removed."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Aliasing] }
-    fn is_fixable(&self) -> bool { false }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Aliasing]
+    }
+    fn is_fixable(&self) -> bool {
+        false
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::WithClause])

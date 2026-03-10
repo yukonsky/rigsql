@@ -130,9 +130,8 @@ mod tests {
 
     #[test]
     fn test_with_cte() {
-        let cst = parse(
-            "WITH active AS (SELECT * FROM users WHERE active = TRUE) SELECT * FROM active",
-        );
+        let cst =
+            parse("WITH active AS (SELECT * FROM users WHERE active = TRUE) SELECT * FROM active");
         assert!(find_type(&cst, SegmentType::WithClause).is_some());
         assert!(find_type(&cst, SegmentType::CteDefinition).is_some());
     }
@@ -161,7 +160,11 @@ mod tests {
     fn test_roundtrip() {
         let sql = "SELECT a, b FROM t WHERE x = 1 ORDER BY a;";
         let cst = parse(sql);
-        assert_eq!(cst.raw(), sql, "CST roundtrip must preserve source text exactly");
+        assert_eq!(
+            cst.raw(),
+            sql,
+            "CST roundtrip must preserve source text exactly"
+        );
     }
 
     #[test]

@@ -11,16 +11,26 @@ use crate::violation::{LintViolation, SourceEdit};
 pub struct RuleAL01;
 
 impl Rule for RuleAL01 {
-    fn code(&self) -> &'static str { "AL01" }
-    fn name(&self) -> &'static str { "aliasing.table" }
-    fn description(&self) -> &'static str { "Implicit aliasing of table/column is not allowed." }
+    fn code(&self) -> &'static str {
+        "AL01"
+    }
+    fn name(&self) -> &'static str {
+        "aliasing.table"
+    }
+    fn description(&self) -> &'static str {
+        "Implicit aliasing of table/column is not allowed."
+    }
     fn explanation(&self) -> &'static str {
         "Aliases should use the explicit AS keyword for clarity. \
          'SELECT a alias_name' is harder to read than 'SELECT a AS alias_name'. \
          Explicit aliasing makes the intent clear and prevents ambiguity."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Aliasing] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Aliasing]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::AliasExpression])
@@ -33,7 +43,9 @@ impl Rule for RuleAL01 {
         }
         if !has_as_keyword(ctx.segment.children()) {
             let children = ctx.segment.children();
-            let fix = children.iter().rev()
+            let fix = children
+                .iter()
+                .rev()
                 .find(|c| !c.segment_type().is_trivia())
                 .map(|alias| SourceEdit::insert(alias.span().start, "AS "));
 

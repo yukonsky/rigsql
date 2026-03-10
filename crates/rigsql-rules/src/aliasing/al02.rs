@@ -12,16 +12,26 @@ use crate::violation::{LintViolation, SourceEdit};
 pub struct RuleAL02;
 
 impl Rule for RuleAL02 {
-    fn code(&self) -> &'static str { "AL02" }
-    fn name(&self) -> &'static str { "aliasing.column" }
-    fn description(&self) -> &'static str { "Implicit column aliasing is not allowed." }
+    fn code(&self) -> &'static str {
+        "AL02"
+    }
+    fn name(&self) -> &'static str {
+        "aliasing.column"
+    }
+    fn description(&self) -> &'static str {
+        "Implicit column aliasing is not allowed."
+    }
     fn explanation(&self) -> &'static str {
         "Column aliases should use the explicit AS keyword. \
          'SELECT col alias' is harder to read than 'SELECT col AS alias'. \
          This is especially important for complex expressions."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Aliasing] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Aliasing]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::AliasExpression])
@@ -44,7 +54,9 @@ impl Rule for RuleAL02 {
 
         if !has_as_keyword(ctx.segment.children()) {
             let children = ctx.segment.children();
-            let fix = children.iter().rev()
+            let fix = children
+                .iter()
+                .rev()
                 .find(|c| !c.segment_type().is_trivia())
                 .map(|alias| SourceEdit::insert(alias.span().start, "AS "));
 

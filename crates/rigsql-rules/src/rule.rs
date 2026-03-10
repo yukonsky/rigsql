@@ -88,7 +88,16 @@ pub fn lint(root: &Segment, source: &str, rules: &[Box<dyn Rule>]) -> Vec<LintVi
                 violations.extend(rule.eval(&ctx));
             }
             CrawlType::Segment(ref types) => {
-                walk_and_lint_indexed(root, 0, None, root, source, rule.as_ref(), types, &mut violations);
+                walk_and_lint_indexed(
+                    root,
+                    0,
+                    None,
+                    root,
+                    source,
+                    rule.as_ref(),
+                    types,
+                    &mut violations,
+                );
             }
         }
     }
@@ -97,6 +106,7 @@ pub fn lint(root: &Segment, source: &str, rules: &[Box<dyn Rule>]) -> Vec<LintVi
     violations
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk_and_lint_indexed(
     segment: &Segment,
     index_in_parent: usize,
@@ -125,7 +135,16 @@ fn walk_and_lint_indexed(
 
     let children = segment.children();
     for (i, child) in children.iter().enumerate() {
-        walk_and_lint_indexed(child, i, Some(segment), root, source, rule, types, violations);
+        walk_and_lint_indexed(
+            child,
+            i,
+            Some(segment),
+            root,
+            source,
+            rule,
+            types,
+            violations,
+        );
     }
 }
 
@@ -135,10 +154,7 @@ fn walk_and_lint_indexed(
 /// so that earlier offsets remain valid. Overlapping edits are skipped.
 pub fn apply_fixes(source: &str, violations: &[LintViolation]) -> String {
     // Collect all edits from all violations
-    let mut edits: Vec<&SourceEdit> = violations
-        .iter()
-        .flat_map(|v| v.fixes.iter())
-        .collect();
+    let mut edits: Vec<&SourceEdit> = violations.iter().flat_map(|v| v.fixes.iter()).collect();
 
     if edits.is_empty() {
         return source.to_string();
@@ -146,7 +162,10 @@ pub fn apply_fixes(source: &str, violations: &[LintViolation]) -> String {
 
     // Sort by span start descending, then by span end descending (apply from back)
     edits.sort_by(|a, b| {
-        b.span.start.cmp(&a.span.start).then(b.span.end.cmp(&a.span.end))
+        b.span
+            .start
+            .cmp(&a.span.start)
+            .then(b.span.end.cmp(&a.span.end))
     });
 
     // Deduplicate edits with identical spans

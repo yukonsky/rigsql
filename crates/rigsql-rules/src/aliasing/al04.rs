@@ -10,16 +10,26 @@ use crate::violation::LintViolation;
 pub struct RuleAL04;
 
 impl Rule for RuleAL04 {
-    fn code(&self) -> &'static str { "AL04" }
-    fn name(&self) -> &'static str { "aliasing.unique_table" }
-    fn description(&self) -> &'static str { "Table aliases should be unique within a statement." }
+    fn code(&self) -> &'static str {
+        "AL04"
+    }
+    fn name(&self) -> &'static str {
+        "aliasing.unique_table"
+    }
+    fn description(&self) -> &'static str {
+        "Table aliases should be unique within a statement."
+    }
     fn explanation(&self) -> &'static str {
         "When the same alias is used for multiple tables in a single statement, \
          column references become ambiguous. Each table alias must be unique within \
          its containing statement."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Aliasing] }
-    fn is_fixable(&self) -> bool { false }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Aliasing]
+    }
+    fn is_fixable(&self) -> bool {
+        false
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::SelectStatement])

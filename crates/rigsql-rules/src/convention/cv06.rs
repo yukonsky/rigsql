@@ -8,16 +8,26 @@ use crate::violation::LintViolation;
 pub struct RuleCV06;
 
 impl Rule for RuleCV06 {
-    fn code(&self) -> &'static str { "CV06" }
-    fn name(&self) -> &'static str { "convention.terminator" }
-    fn description(&self) -> &'static str { "Statements must end with a semicolon." }
+    fn code(&self) -> &'static str {
+        "CV06"
+    }
+    fn name(&self) -> &'static str {
+        "convention.terminator"
+    }
+    fn description(&self) -> &'static str {
+        "Statements must end with a semicolon."
+    }
     fn explanation(&self) -> &'static str {
         "All SQL statements should be terminated with a semicolon. While some databases \
          accept statements without terminators, including them is good practice for \
          portability and clarity."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Convention] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Convention]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::Statement])

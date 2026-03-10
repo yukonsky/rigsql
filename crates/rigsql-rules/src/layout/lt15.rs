@@ -10,16 +10,26 @@ use crate::violation::LintViolation;
 pub struct RuleLT15;
 
 impl Rule for RuleLT15 {
-    fn code(&self) -> &'static str { "LT15" }
-    fn name(&self) -> &'static str { "layout.distinct" }
-    fn description(&self) -> &'static str { "DISTINCT used with parentheses." }
+    fn code(&self) -> &'static str {
+        "LT15"
+    }
+    fn name(&self) -> &'static str {
+        "layout.distinct"
+    }
+    fn description(&self) -> &'static str {
+        "DISTINCT used with parentheses."
+    }
     fn explanation(&self) -> &'static str {
         "DISTINCT is not a function and should not be used with parentheses. \
          'SELECT DISTINCT(col)' is misleading because the parentheses don't do anything. \
          Write 'SELECT DISTINCT col' instead."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::SelectClause])

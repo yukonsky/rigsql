@@ -64,9 +64,7 @@ pub struct Context {
 }
 
 impl JsonFormatter {
-    pub fn format(
-        file_results: &[(&Path, &str, &[LintViolation])],
-    ) -> String {
+    pub fn format(file_results: &[(&Path, &str, &[LintViolation])]) -> String {
         Self::format_with_rules(file_results, &rigsql_rules::default_rules())
     }
 
@@ -74,10 +72,8 @@ impl JsonFormatter {
         file_results: &[(&Path, &str, &[LintViolation])],
         rules: &[Box<dyn Rule>],
     ) -> String {
-        let rule_map: HashMap<&str, &dyn Rule> = rules
-            .iter()
-            .map(|r| (r.code(), r.as_ref()))
-            .collect();
+        let rule_map: HashMap<&str, &dyn Rule> =
+            rules.iter().map(|r| (r.code(), r.as_ref())).collect();
 
         let mut by_rule: HashMap<String, usize> = HashMap::new();
         let mut total_violations = 0;

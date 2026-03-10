@@ -6,29 +6,31 @@ use crate::violation::LintViolation;
 /// CV09: Use of blocked words.
 ///
 /// Flag identifiers that match a configurable list of blocked words.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RuleCV09 {
     pub blocked_words: Vec<String>,
 }
 
-impl Default for RuleCV09 {
-    fn default() -> Self {
-        Self {
-            blocked_words: Vec::new(),
-        }
-    }
-}
-
 impl Rule for RuleCV09 {
-    fn code(&self) -> &'static str { "CV09" }
-    fn name(&self) -> &'static str { "convention.blocked_words" }
-    fn description(&self) -> &'static str { "Use of blocked words." }
+    fn code(&self) -> &'static str {
+        "CV09"
+    }
+    fn name(&self) -> &'static str {
+        "convention.blocked_words"
+    }
+    fn description(&self) -> &'static str {
+        "Use of blocked words."
+    }
     fn explanation(&self) -> &'static str {
         "Certain words may be reserved, deprecated, or disallowed by team convention. \
          This rule flags identifiers that match a configurable list of blocked words."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Convention] }
-    fn is_fixable(&self) -> bool { false }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Convention]
+    }
+    fn is_fixable(&self) -> bool {
+        false
+    }
 
     fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
         if let Some(val) = settings.get("blocked_words") {

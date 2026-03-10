@@ -92,7 +92,10 @@ impl LintViolation {
             offset
         } else {
             // Walk backwards to find a valid char boundary
-            (0..offset).rev().find(|&i| source.is_char_boundary(i)).unwrap_or(0)
+            (0..offset)
+                .rev()
+                .find(|&i| source.is_char_boundary(i))
+                .unwrap_or(0)
         };
         let before = &source[..offset];
         let line = before.chars().filter(|&c| c == '\n').count() + 1;

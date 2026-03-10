@@ -131,8 +131,7 @@ impl<'a> ParseContext<'a> {
 
     /// Are we at EOF?
     pub fn at_eof(&self) -> bool {
-        self.pos >= self.tokens.len()
-            || self.tokens[self.pos].kind == TokenKind::Eof
+        self.pos >= self.tokens.len() || self.tokens[self.pos].kind == TokenKind::Eof
     }
 
     /// Remaining tokens from current position.

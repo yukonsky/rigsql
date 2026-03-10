@@ -10,15 +10,25 @@ use crate::violation::LintViolation;
 pub struct RuleLT03;
 
 impl Rule for RuleLT03 {
-    fn code(&self) -> &'static str { "LT03" }
-    fn name(&self) -> &'static str { "layout.operators" }
-    fn description(&self) -> &'static str { "Operators should be surrounded by single spaces." }
+    fn code(&self) -> &'static str {
+        "LT03"
+    }
+    fn name(&self) -> &'static str {
+        "layout.operators"
+    }
+    fn description(&self) -> &'static str {
+        "Operators should be surrounded by single spaces."
+    }
     fn explanation(&self) -> &'static str {
         "Binary operators (=, <, >, +, -, etc.) should have a single space on each side \
          for readability. 'a=b' and 'a  = b' are harder to read than 'a = b'."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![

@@ -47,15 +47,15 @@ pub enum TokenKind {
     Slash,
     Percent,
     Eq,
-    Neq,       // <> or !=
+    Neq, // <> or !=
     Lt,
     Gt,
     LtEq,
     GtEq,
-    Concat,    // ||
+    Concat,     // ||
     ColonColon, // :: (PostgreSQL cast)
-    AtSign,    // @ (SQL Server variable prefix)
-    Colon,     // : (named parameter)
+    AtSign,     // @ (SQL Server variable prefix)
+    Colon,      // : (named parameter)
 
     // Whitespace & Comments
     Whitespace,

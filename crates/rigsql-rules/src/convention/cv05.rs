@@ -10,16 +10,26 @@ use crate::violation::LintViolation;
 pub struct RuleCV05;
 
 impl Rule for RuleCV05 {
-    fn code(&self) -> &'static str { "CV05" }
-    fn name(&self) -> &'static str { "convention.is_null" }
-    fn description(&self) -> &'static str { "Comparisons with NULL should use IS or IS NOT." }
+    fn code(&self) -> &'static str {
+        "CV05"
+    }
+    fn name(&self) -> &'static str {
+        "convention.is_null"
+    }
+    fn description(&self) -> &'static str {
+        "Comparisons with NULL should use IS or IS NOT."
+    }
     fn explanation(&self) -> &'static str {
         "In SQL, NULL is not a value but the absence of one. Comparison operators \
          (=, !=, <>) with NULL always return NULL (which is falsy). Use 'IS NULL' or \
          'IS NOT NULL' instead of '= NULL' or '!= NULL'."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Convention] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Convention]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::BinaryExpression])
@@ -41,10 +51,7 @@ impl Rule for RuleCV05 {
 
         // Check if operator is comparison (=, !=, <>)
         let op = non_trivia[1];
-        let is_comparison = matches!(
-            op.segment_type(),
-            SegmentType::ComparisonOperator
-        );
+        let is_comparison = matches!(op.segment_type(), SegmentType::ComparisonOperator);
         if !is_comparison {
             return vec![];
         }
@@ -69,11 +76,8 @@ fn is_null_literal(seg: &Segment) -> bool {
     match seg {
         Segment::Token(t) => {
             t.segment_type == SegmentType::NullLiteral
-                || (t.token.kind == TokenKind::Word
-                    && t.token.text.eq_ignore_ascii_case("NULL"))
+                || (t.token.kind == TokenKind::Word && t.token.text.eq_ignore_ascii_case("NULL"))
         }
-        Segment::Node(n) => {
-            n.segment_type == SegmentType::NullLiteral
-        }
+        Segment::Node(n) => n.segment_type == SegmentType::NullLiteral,
     }
 }

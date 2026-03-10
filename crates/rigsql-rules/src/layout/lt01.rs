@@ -11,16 +11,26 @@ use crate::violation::{LintViolation, SourceEdit};
 pub struct RuleLT01;
 
 impl Rule for RuleLT01 {
-    fn code(&self) -> &'static str { "LT01" }
-    fn name(&self) -> &'static str { "layout.spacing" }
-    fn description(&self) -> &'static str { "Inappropriate spacing found." }
+    fn code(&self) -> &'static str {
+        "LT01"
+    }
+    fn name(&self) -> &'static str {
+        "layout.spacing"
+    }
+    fn description(&self) -> &'static str {
+        "Inappropriate spacing found."
+    }
     fn explanation(&self) -> &'static str {
         "SQL should use single spaces between keywords and expressions. \
          Multiple consecutive spaces (except for indentation) reduce readability. \
          Operators should have spaces on both sides."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { true }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        true
+    }
 
     fn crawl_type(&self) -> CrawlType {
         CrawlType::Segment(vec![SegmentType::Whitespace])
@@ -47,10 +57,7 @@ impl Rule for RuleLT01 {
 
             return vec![LintViolation::with_fix(
                 self.code(),
-                format!(
-                    "Expected single space, found {} spaces.",
-                    text.len()
-                ),
+                format!("Expected single space, found {} spaces.", text.len()),
                 t.token.span,
                 vec![SourceEdit::replace(t.token.span, " ")],
             )];

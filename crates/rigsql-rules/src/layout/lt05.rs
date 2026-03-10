@@ -18,15 +18,25 @@ impl Default for RuleLT05 {
 }
 
 impl Rule for RuleLT05 {
-    fn code(&self) -> &'static str { "LT05" }
-    fn name(&self) -> &'static str { "layout.long_lines" }
-    fn description(&self) -> &'static str { "Line too long." }
+    fn code(&self) -> &'static str {
+        "LT05"
+    }
+    fn name(&self) -> &'static str {
+        "layout.long_lines"
+    }
+    fn description(&self) -> &'static str {
+        "Line too long."
+    }
     fn explanation(&self) -> &'static str {
         "Long lines are harder to read and review. Keep lines under the configured \
          maximum length (default 80 characters). Break long queries across multiple lines."
     }
-    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Layout] }
-    fn is_fixable(&self) -> bool { false }
+    fn groups(&self) -> &[RuleGroup] {
+        &[RuleGroup::Layout]
+    }
+    fn is_fixable(&self) -> bool {
+        false
+    }
 
     fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
         if let Some(val) = settings.get("max_line_length") {

@@ -13,12 +13,7 @@ impl HumanFormatter {
     }
 
     /// Format violations for a single file.
-    pub fn format_file(
-        &self,
-        path: &Path,
-        source: &str,
-        violations: &[LintViolation],
-    ) -> String {
+    pub fn format_file(&self, path: &Path, source: &str, violations: &[LintViolation]) -> String {
         if violations.is_empty() {
             return String::new();
         }
