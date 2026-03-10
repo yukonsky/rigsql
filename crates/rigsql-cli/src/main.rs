@@ -1,0 +1,450 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process;
+
+use clap::{Parser, Subcommand, ValueEnum};
+use rigsql_config::{Config, filter_noqa};
+use rigsql_core::Segment;
+use rigsql_dialects::DialectKind;
+use rigsql_output::HumanFormatter;
+use rigsql_rules::{default_rules, rule::{apply_fixes, lint}, Rule};
+
+#[derive(Parser)]
+#[command(name = "rigsql", version, about = "Fast SQL linter written in Rust")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Parse SQL files and display the Concrete Syntax Tree
+    Parse {
+        /// SQL file to parse (use - for stdin)
+        file: String,
+
+        /// SQL dialect
+        #[arg(long, default_value = "ansi")]
+        dialect: DialectArg,
+
+        /// Output format
+        #[arg(long, default_value = "tree")]
+        format: ParseFormat,
+    },
+
+    /// Lint SQL files for style violations
+    Lint {
+        /// SQL files or directories to lint
+        files: Vec<String>,
+
+        /// SQL dialect
+        #[arg(long, default_value = "ansi")]
+        dialect: DialectArg,
+
+        /// Output format
+        #[arg(long, default_value = "human")]
+        format: LintFormat,
+
+        /// Disable colored output
+        #[arg(long)]
+        no_color: bool,
+    },
+
+    /// Auto-fix SQL files
+    Fix {
+        /// SQL files or directories to fix
+        files: Vec<String>,
+
+        /// SQL dialect
+        #[arg(long, default_value = "ansi")]
+        dialect: DialectArg,
+
+        /// Don't write changes, just show what would be fixed
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip confirmation prompt
+        #[arg(long, short)]
+        force: bool,
+    },
+
+    /// List available lint rules
+    Rules,
+}
+
+#[derive(Clone, ValueEnum)]
+enum DialectArg {
+    Ansi,
+    Postgres,
+    Tsql,
+}
+
+impl From<DialectArg> for DialectKind {
+    fn from(arg: DialectArg) -> Self {
+        match arg {
+            DialectArg::Ansi => DialectKind::Ansi,
+            DialectArg::Postgres => DialectKind::Postgres,
+            DialectArg::Tsql => DialectKind::Tsql,
+        }
+    }
+}
+
+#[derive(Clone, ValueEnum)]
+enum ParseFormat {
+    Tree,
+    Json,
+}
+
+#[derive(Clone, ValueEnum)]
+enum LintFormat {
+    Human,
+    Json,
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Parse {
+            file,
+            dialect,
+            format,
+        } => cmd_parse(&file, dialect.into(), format),
+
+        Commands::Lint {
+            files,
+            dialect,
+            format,
+            no_color,
+        } => {
+            let exit_code = cmd_lint(&files, dialect.into(), format, no_color);
+            process::exit(exit_code);
+        }
+
+        Commands::Fix {
+            files,
+            dialect,
+            dry_run,
+            force,
+        } => {
+            let exit_code = cmd_fix(&files, dialect.into(), dry_run, force);
+            process::exit(exit_code);
+        }
+
+        Commands::Rules => cmd_rules(),
+    }
+}
+
+fn cmd_parse(file: &str, dialect: DialectKind, format: ParseFormat) {
+    let source = read_file_or_stdin(file);
+    let parser = dialect.parser();
+    let cst = parser.parse(&source).unwrap_or_else(|e| {
+        eprintln!("Parse error: {e}");
+        process::exit(2);
+    });
+
+    match format {
+        ParseFormat::Tree => print_tree(&cst, 0),
+        ParseFormat::Json => {
+            let json = cst_to_json(&cst);
+            println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        }
+    }
+}
+
+/// Build configured rules from config file found near the given paths.
+fn build_rules(files: &[String]) -> Vec<Box<dyn Rule>> {
+    let config = files
+        .first()
+        .map(|f| Config::load_for_path(Path::new(f)))
+        .unwrap_or_default();
+
+    let mut rules = default_rules();
+
+    for rule in &mut rules {
+        if let Some(settings) = config.rules.get(rule.name()) {
+            rule.configure(settings);
+        }
+    }
+
+    if let Some(max_len) = config.max_line_length {
+        for rule in &mut rules {
+            if rule.code() == "LT05" {
+                let mut settings = std::collections::HashMap::new();
+                settings.insert("max_line_length".to_string(), max_len.to_string());
+                rule.configure(&settings);
+            }
+        }
+    }
+
+    if !config.exclude_rules.is_empty() {
+        rules.retain(|r| !config.exclude_rules.iter().any(|e| e == r.code()));
+    }
+
+    rules
+}
+
+fn cmd_fix(files: &[String], dialect: DialectKind, dry_run: bool, _force: bool) -> i32 {
+    let sql_files = collect_sql_files(files);
+    if sql_files.is_empty() {
+        eprintln!("No SQL files found.");
+        return 2;
+    }
+
+    let all_rules = build_rules(files);
+    let parser = dialect.parser();
+    let mut fixed_count = 0;
+    let mut file_count = 0;
+
+    for path in &sql_files {
+        let source = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Error reading {}: {}", path.display(), e);
+                continue;
+            }
+        };
+
+        // Iterative fix loop: parse → lint → fix → repeat until stable (max 10 rounds)
+        let mut current = source.clone();
+        let mut rounds = 0;
+        let max_rounds = 10;
+
+        loop {
+            let cst = match parser.parse(&current) {
+                Ok(c) => c,
+                Err(_) => break,
+            };
+
+            let mut violations = lint(&cst, &current, &all_rules);
+            filter_noqa(&current, &mut violations);
+
+            // Only keep fixable violations (those with edits)
+            let fixable: Vec<_> = violations.into_iter().filter(|v| !v.fixes.is_empty()).collect();
+            if fixable.is_empty() {
+                break;
+            }
+
+            let new_source = apply_fixes(&current, &fixable);
+            if new_source == current {
+                break; // No progress
+            }
+
+            fixed_count += fixable.len();
+            current = new_source;
+            rounds += 1;
+            if rounds >= max_rounds {
+                break;
+            }
+        }
+
+        if current != source {
+            file_count += 1;
+            if dry_run {
+                println!("Would fix: {}", path.display());
+            } else {
+                if let Err(e) = fs::write(path, &current) {
+                    eprintln!("Error writing {}: {}", path.display(), e);
+                } else {
+                    println!("Fixed: {}", path.display());
+                }
+            }
+        }
+    }
+
+    if file_count == 0 {
+        eprintln!("No fixable violations found.");
+    } else {
+        eprintln!(
+            "{} {} in {} file{}.",
+            if dry_run { "Would apply" } else { "Applied" },
+            fixed_count,
+            file_count,
+            if file_count == 1 { "" } else { "s" },
+        );
+    }
+
+    0
+}
+
+fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color: bool) -> i32 {
+    let sql_files = collect_sql_files(files);
+    if sql_files.is_empty() {
+        eprintln!("No SQL files found.");
+        return 2;
+    }
+
+    let rules = build_rules(files);
+
+    let parser = dialect.parser();
+    let formatter = HumanFormatter::new(!no_color);
+
+    let mut total_violations = 0;
+    let mut files_with_violations = 0;
+    let mut json_results: Vec<(PathBuf, String, Vec<rigsql_rules::LintViolation>)> = Vec::new();
+
+    for path in &sql_files {
+        let source = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Error reading {}: {}", path.display(), e);
+                continue;
+            }
+        };
+
+        let cst = match parser.parse(&source) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Parse error in {}: {}", path.display(), e);
+                continue;
+            }
+        };
+
+        let mut violations = lint(&cst, &source, &rules);
+
+        // Apply noqa filtering
+        filter_noqa(&source, &mut violations);
+
+        if !violations.is_empty() {
+            files_with_violations += 1;
+            total_violations += violations.len();
+        }
+
+        match format {
+            LintFormat::Human => {
+                let output = formatter.format_file(path, &source, &violations);
+                if !output.is_empty() {
+                    print!("{output}");
+                }
+            }
+            LintFormat::Json => {
+                json_results.push((path.clone(), source, violations));
+            }
+        }
+    }
+
+    match format {
+        LintFormat::Human => {
+            let summary = formatter.format_summary(
+                sql_files.len(),
+                files_with_violations,
+                total_violations,
+            );
+            print!("{summary}");
+        }
+        LintFormat::Json => {
+            let refs: Vec<(&Path, &str, &[rigsql_rules::LintViolation])> = json_results
+                .iter()
+                .map(|(p, s, v)| (p.as_path(), s.as_str(), v.as_slice()))
+                .collect();
+            println!("{}", rigsql_output::JsonFormatter::format_with_rules(&refs, &rules));
+        }
+    }
+
+    if total_violations > 0 { 1 } else { 0 }
+}
+
+fn cmd_rules() {
+    let rules = default_rules();
+    println!("{:<6} {:<30} {}", "Code", "Name", "Description");
+    println!("{}", "-".repeat(80));
+    for rule in &rules {
+        println!(
+            "{:<6} {:<30} {}",
+            rule.code(),
+            rule.name(),
+            rule.description()
+        );
+    }
+}
+
+fn collect_sql_files(paths: &[String]) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for path_str in paths {
+        let path = PathBuf::from(path_str);
+        if path.is_file() {
+            files.push(path);
+        } else if path.is_dir() {
+            walk_dir_recursive(&path, &mut files);
+        }
+    }
+    files.sort();
+    files
+}
+
+fn walk_dir_recursive(dir: &Path, files: &mut Vec<PathBuf>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                walk_dir_recursive(&p, files);
+            } else if p.is_file() && p.extension().is_some_and(|ext| ext == "sql") {
+                files.push(p);
+            }
+        }
+    }
+}
+
+fn read_file_or_stdin(file: &str) -> String {
+    if file == "-" {
+        use std::io::Read;
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf).unwrap_or_else(|e| {
+            eprintln!("Error reading stdin: {e}");
+            process::exit(2);
+        });
+        buf
+    } else {
+        fs::read_to_string(file).unwrap_or_else(|e| {
+            eprintln!("Error reading {file}: {e}");
+            process::exit(2);
+        })
+    }
+}
+
+fn print_tree(segment: &Segment, depth: usize) {
+    let indent = "  ".repeat(depth);
+    match segment {
+        Segment::Token(t) => {
+            let text = t.token.text.replace('\n', "\\n").replace('\r', "\\r");
+            println!(
+                "{indent}[{:?}] {:?} {:?}",
+                t.segment_type, t.token.kind, text
+            );
+        }
+        Segment::Node(n) => {
+            println!("{indent}[{:?}]", n.segment_type);
+            for child in &n.children {
+                print_tree(child, depth + 1);
+            }
+        }
+    }
+}
+
+fn cst_to_json(segment: &Segment) -> serde_json::Value {
+    match segment {
+        Segment::Token(t) => {
+            serde_json::json!({
+                "type": format!("{:?}", t.segment_type),
+                "token_kind": format!("{:?}", t.token.kind),
+                "text": t.token.text.as_str(),
+                "span": {
+                    "start": t.token.span.start,
+                    "end": t.token.span.end,
+                }
+            })
+        }
+        Segment::Node(n) => {
+            let children: Vec<serde_json::Value> =
+                n.children.iter().map(|c| cst_to_json(c)).collect();
+            serde_json::json!({
+                "type": format!("{:?}", n.segment_type),
+                "children": children,
+                "span": {
+                    "start": n.span.start,
+                    "end": n.span.end,
+                }
+            })
+        }
+    }
+}

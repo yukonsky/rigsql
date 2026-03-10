@@ -1,0 +1,21 @@
+[package]
+name = "rigsql-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "rigsql"
+path = "src/main.rs"
+
+[dependencies]
+rigsql-core = { workspace = true }
+rigsql-lexer = { workspace = true }
+rigsql-parser = { workspace = true }
+rigsql-dialects = { workspace = true }
+rigsql-rules = { workspace = true }
+rigsql-config = { workspace = true }
+rigsql-output = { workspace = true }
+clap = { workspace = true }
+miette = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }

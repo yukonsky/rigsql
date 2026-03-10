@@ -1,0 +1,12 @@
+[package]
+name = "rigsql-lexer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rigsql-core = { workspace = true }
+smol_str = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

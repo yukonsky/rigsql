@@ -1,0 +1,10 @@
+[package]
+name = "rigsql-dialects"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rigsql-core = { workspace = true }
+rigsql-lexer = { workspace = true }
+rigsql-parser = { workspace = true }
+strum = { workspace = true }

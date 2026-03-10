@@ -1,0 +1,13 @@
+[package]
+name = "rigsql-parser"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rigsql-core = { workspace = true }
+rigsql-lexer = { workspace = true }
+thiserror = { workspace = true }
+smol_str = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

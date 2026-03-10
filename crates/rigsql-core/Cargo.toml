@@ -1,0 +1,9 @@
+[package]
+name = "rigsql-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+smol_str = { workspace = true }
+strum = { workspace = true }
+serde = { workspace = true }

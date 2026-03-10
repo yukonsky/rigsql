@@ -1,0 +1,12 @@
+[package]
+name = "rigsql-rules"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rigsql-core = { workspace = true }
+rigsql-lexer = { workspace = true }
+
+[dev-dependencies]
+rigsql-parser = { workspace = true }
+insta = { workspace = true }

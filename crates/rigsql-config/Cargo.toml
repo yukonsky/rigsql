@@ -1,0 +1,11 @@
+[package]
+name = "rigsql-config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rigsql-core = { workspace = true }
+rigsql-rules = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }

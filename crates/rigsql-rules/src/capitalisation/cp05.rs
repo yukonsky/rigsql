@@ -1,0 +1,89 @@
+use rigsql_core::SegmentType;
+
+use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
+use crate::violation::{LintViolation, SourceEdit};
+
+/// CP05: Data type names must be consistently capitalised.
+///
+/// By default expects upper case (INT, VARCHAR, etc.).
+#[derive(Debug)]
+pub struct RuleCP05 {
+    pub policy: DataTypeCapPolicy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataTypeCapPolicy {
+    Upper,
+    Lower,
+}
+
+impl Default for RuleCP05 {
+    fn default() -> Self {
+        Self {
+            policy: DataTypeCapPolicy::Upper,
+        }
+    }
+}
+
+impl Rule for RuleCP05 {
+    fn code(&self) -> &'static str { "CP05" }
+    fn name(&self) -> &'static str { "capitalisation.types" }
+    fn description(&self) -> &'static str { "Data type names must be consistently capitalised." }
+    fn explanation(&self) -> &'static str {
+        "Data type names (INT, VARCHAR, TEXT, etc.) should use consistent capitalisation. \
+         Most style guides recommend upper case for data types to distinguish them from column names."
+    }
+    fn groups(&self) -> &[RuleGroup] { &[RuleGroup::Capitalisation] }
+    fn is_fixable(&self) -> bool { true }
+
+    fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
+        if let Some(val) = settings.get("capitalisation_policy") {
+            self.policy = match val.as_str() {
+                "lower" => DataTypeCapPolicy::Lower,
+                _ => DataTypeCapPolicy::Upper,
+            };
+        }
+    }
+
+    fn crawl_type(&self) -> CrawlType {
+        CrawlType::Segment(vec![SegmentType::DataType])
+    }
+
+    fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
+        // DataType node may contain keyword tokens (INT, VARCHAR, etc.)
+        let tokens = ctx.segment.tokens();
+        let mut violations = Vec::new();
+
+        for token in tokens {
+            let text = token.text.as_str();
+            // Skip numeric parts like VARCHAR(255)
+            if text.chars().all(|c| c.is_ascii_digit() || c == '(' || c == ')' || c == ',') {
+                continue;
+            }
+
+            let expected = match self.policy {
+                DataTypeCapPolicy::Upper => text.to_ascii_uppercase(),
+                DataTypeCapPolicy::Lower => text.to_ascii_lowercase(),
+            };
+
+            if text != expected {
+                violations.push(LintViolation::with_fix(
+                    self.code(),
+                    format!(
+                        "Data type must be {} case. Found '{}' instead of '{}'.",
+                        match self.policy {
+                            DataTypeCapPolicy::Upper => "upper",
+                            DataTypeCapPolicy::Lower => "lower",
+                        },
+                        text,
+                        expected
+                    ),
+                    token.span,
+                    vec![SourceEdit::replace(token.span, expected.clone())],
+                ));
+            }
+        }
+
+        violations
+    }
+}
