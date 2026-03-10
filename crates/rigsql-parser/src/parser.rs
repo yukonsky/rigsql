@@ -57,7 +57,7 @@ mod tests {
         );
     }
 
-    fn find_type<'a>(seg: &'a Segment, ty: SegmentType) -> Option<&'a Segment> {
+    fn find_type(seg: &Segment, ty: SegmentType) -> Option<&Segment> {
         let mut result = None;
         seg.walk(&mut |s| {
             if result.is_none() && s.segment_type() == ty {
