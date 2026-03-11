@@ -15,7 +15,7 @@ impl Rule for RuleAM08 {
         "AM08"
     }
     fn name(&self) -> &'static str {
-        "ambiguous.from_clause_join"
+        "ambiguous.join_condition"
     }
     fn description(&self) -> &'static str {
         "Implicit cross join in FROM clause."

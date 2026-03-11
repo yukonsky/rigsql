@@ -15,7 +15,7 @@ impl Rule for RuleAL09 {
         "AL09"
     }
     fn name(&self) -> &'static str {
-        "aliasing.self_alias"
+        "aliasing.self_alias.column"
     }
     fn description(&self) -> &'static str {
         "Self-aliasing of columns is redundant."

@@ -1,5 +1,3 @@
-use rigsql_core::SegmentType;
-
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
 use crate::violation::LintViolation;
 
@@ -7,6 +5,11 @@ use crate::violation::LintViolation;
 ///
 /// SQL Server treats procedures prefixed with `sp_` as system procedures and
 /// searches the `master` database first, which degrades performance.
+///
+/// This rule should check CREATE PROCEDURE statements, but since our parser
+/// doesn't yet support CREATE PROCEDURE, this rule is currently a stub that
+/// produces no violations. It will be implemented when CREATE PROCEDURE
+/// parsing is added.
 #[derive(Debug, Default)]
 pub struct RuleTQ01;
 
@@ -23,7 +26,8 @@ impl Rule for RuleTQ01 {
     fn explanation(&self) -> &'static str {
         "Stored procedures with the sp_ prefix cause SQL Server to search the master database \
          first before checking the current database. This lookup adds unnecessary overhead and \
-         can lead to unexpected behavior if a system procedure with the same name exists."
+         can lead to unexpected behavior if a system procedure with the same name exists. \
+         Use a different prefix such as usp_ for user-defined stored procedures."
     }
     fn groups(&self) -> &[RuleGroup] {
         &[RuleGroup::Convention]
@@ -33,34 +37,13 @@ impl Rule for RuleTQ01 {
     }
 
     fn crawl_type(&self) -> CrawlType {
-        CrawlType::Segment(vec![SegmentType::ExecStatement])
+        // Stub: needs CreateProcedureStatement support in the parser
+        CrawlType::RootOnly
     }
 
-    fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
-        if ctx.dialect != "tsql" {
-            return vec![];
-        }
-
-        let mut violations = Vec::new();
-
-        for child in ctx.segment.children() {
-            if child.segment_type() == SegmentType::Identifier {
-                let raw = child.raw();
-                if raw.to_lowercase().starts_with("sp_") {
-                    violations.push(LintViolation::new(
-                        self.code(),
-                        format!(
-                            "Procedure '{}' uses the sp_ prefix which causes SQL Server to \
-                             search the master database first.",
-                            raw
-                        ),
-                        child.span(),
-                    ));
-                }
-            }
-        }
-
-        violations
+    fn eval(&self, _ctx: &RuleContext) -> Vec<LintViolation> {
+        // Stub: CREATE PROCEDURE parsing not yet supported
+        vec![]
     }
 }
 
@@ -70,20 +53,14 @@ mod tests {
     use crate::test_utils::lint_sql_with_dialect;
 
     #[test]
-    fn test_tq01_flags_sp_prefix() {
+    fn test_tq01_stub_no_violations() {
+        // Currently a stub until CREATE PROCEDURE parsing is supported
         let violations = lint_sql_with_dialect("EXEC sp_helpdb", RuleTQ01, "tsql");
-        assert_eq!(violations.len(), 1);
-        assert!(violations[0].message.contains("sp_helpdb"));
-    }
-
-    #[test]
-    fn test_tq01_accepts_usp_prefix() {
-        let violations = lint_sql_with_dialect("EXEC usp_GetUsers", RuleTQ01, "tsql");
         assert_eq!(violations.len(), 0);
     }
 
     #[test]
-    fn test_tq01_skips_non_tsql() {
+    fn test_tq01_stub_no_violations_ansi() {
         let violations = lint_sql_with_dialect("EXEC sp_helpdb", RuleTQ01, "ansi");
         assert_eq!(violations.len(), 0);
     }

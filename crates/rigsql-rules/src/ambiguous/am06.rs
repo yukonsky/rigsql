@@ -3,10 +3,10 @@ use rigsql_core::{Segment, SegmentType};
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
 use crate::violation::LintViolation;
 
-/// AM06: Inconsistent column references (qualified vs unqualified).
+/// AM06: Inconsistent column references in GROUP BY/ORDER BY.
 ///
-/// If some column references use table qualifiers and others don't,
-/// the unqualified ones are flagged as ambiguous.
+/// GROUP BY and ORDER BY clauses should not mix positional (numeric) references
+/// with explicit (named) references. Use one style consistently.
 #[derive(Debug, Default)]
 pub struct RuleAM06;
 
@@ -18,12 +18,13 @@ impl Rule for RuleAM06 {
         "ambiguous.column_references"
     }
     fn description(&self) -> &'static str {
-        "Inconsistent column references."
+        "Inconsistent column references in GROUP BY/ORDER BY."
     }
     fn explanation(&self) -> &'static str {
-        "When a query mixes qualified (table.column) and unqualified (column) references, \
-         the unqualified ones are ambiguous, especially when multiple tables are involved. \
-         Either qualify all column references or none for consistency."
+        "GROUP BY and ORDER BY clauses should use a consistent style for column references: \
+         either all positional (e.g., GROUP BY 1, 2) or all explicit column names \
+         (e.g., GROUP BY foo, bar). Mixing styles like GROUP BY foo, 2 is ambiguous \
+         and hard to maintain."
     }
     fn groups(&self) -> &[RuleGroup] {
         &[RuleGroup::Ambiguous]
@@ -33,24 +34,41 @@ impl Rule for RuleAM06 {
     }
 
     fn crawl_type(&self) -> CrawlType {
-        CrawlType::Segment(vec![SegmentType::SelectStatement])
+        CrawlType::Segment(vec![SegmentType::GroupByClause, SegmentType::OrderByClause])
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
-        let mut qualified = Vec::new();
-        let mut unqualified = Vec::new();
+        let mut positional = Vec::new();
+        let mut named = Vec::new();
 
-        collect_column_refs(ctx.segment, &mut qualified, &mut unqualified);
+        collect_ref_styles(ctx.segment, &mut positional, &mut named);
 
-        // Only flag if there's a mix
-        if !qualified.is_empty() && !unqualified.is_empty() {
-            return unqualified
-                .into_iter()
+        // Only flag if there's a mix of styles
+        if !positional.is_empty() && !named.is_empty() {
+            let clause_name = match ctx.segment.segment_type() {
+                SegmentType::GroupByClause => "GROUP BY",
+                SegmentType::OrderByClause => "ORDER BY",
+                _ => "Clause",
+            };
+
+            // Flag the minority style references.
+            // If there are more positional than named, flag named ones and vice versa.
+            let (targets, style) = if positional.len() >= named.len() {
+                (&named, "explicit")
+            } else {
+                (&positional, "positional")
+            };
+
+            return targets
+                .iter()
                 .map(|span| {
                     LintViolation::new(
                         self.code(),
-                        "Unqualified column reference when other references are qualified.",
-                        span,
+                        format!(
+                            "Mixed positional and explicit references in {}. Found {} reference.",
+                            clause_name, style
+                        ),
+                        *span,
                     )
                 })
                 .collect();
@@ -60,59 +78,72 @@ impl Rule for RuleAM06 {
     }
 }
 
-/// Context for determining if an Identifier is likely a column reference.
-const COLUMN_CONTEXTS: &[SegmentType] = &[
-    SegmentType::SelectClause,
-    SegmentType::WhereClause,
-    SegmentType::HavingClause,
-    SegmentType::OrderByClause,
-    SegmentType::GroupByClause,
-    SegmentType::OnClause,
-    SegmentType::OrderByExpression,
-    SegmentType::BinaryExpression,
-];
-
-fn collect_column_refs(
+/// Classify references in a GROUP BY or ORDER BY clause as positional (numeric)
+/// or named (identifier/expression).
+fn collect_ref_styles(
     segment: &Segment,
-    qualified: &mut Vec<rigsql_core::Span>,
-    unqualified: &mut Vec<rigsql_core::Span>,
+    positional: &mut Vec<rigsql_core::Span>,
+    named: &mut Vec<rigsql_core::Span>,
 ) {
-    // Skip subqueries to avoid cross-scope confusion
-    if segment.segment_type() == SegmentType::Subquery {
-        return;
-    }
-
-    match segment.segment_type() {
-        SegmentType::QualifiedIdentifier | SegmentType::ColumnRef => {
-            // Check if it contains a Dot (meaning it's table.column)
-            let has_dot = segment
-                .children()
-                .iter()
-                .any(|c| c.segment_type() == SegmentType::Dot);
-            if has_dot {
-                qualified.push(segment.span());
-            } else {
-                unqualified.push(segment.span());
-            }
-            return; // Don't recurse into children
-        }
-        _ => {}
-    }
-
-    // In column-relevant contexts, bare Identifiers are likely column references
-    if COLUMN_CONTEXTS.contains(&segment.segment_type()) {
-        for child in segment.children() {
-            if child.segment_type() == SegmentType::Identifier {
-                unqualified.push(child.span());
-            } else {
-                collect_column_refs(child, qualified, unqualified);
-            }
-        }
-        return;
-    }
-
     for child in segment.children() {
-        collect_column_refs(child, qualified, unqualified);
+        let st = child.segment_type();
+        match st {
+            // Skip keywords (GROUP, BY, ORDER, ASC, DESC), trivia, commas
+            SegmentType::Keyword
+            | SegmentType::Whitespace
+            | SegmentType::Newline
+            | SegmentType::Comma
+            | SegmentType::LineComment
+            | SegmentType::BlockComment => {}
+
+            // A bare NumberLiteral is a positional reference
+            SegmentType::NumericLiteral => {
+                positional.push(child.span());
+            }
+
+            // OrderByExpression wraps an expression + optional ASC/DESC
+            SegmentType::OrderByExpression => {
+                collect_ref_styles(child, positional, named);
+            }
+
+            // An expression node: check if it contains only a NumberLiteral
+            SegmentType::Expression => {
+                if is_single_number_literal(child) {
+                    positional.push(child.span());
+                } else {
+                    named.push(child.span());
+                }
+            }
+
+            // Identifiers, ColumnRef, QualifiedIdentifier, FunctionCall, etc. → named
+            _ => {
+                if !child.children().is_empty() {
+                    // Node type — check if it's a wrapper around a single number
+                    if is_single_number_literal(child) {
+                        positional.push(child.span());
+                    } else {
+                        named.push(child.span());
+                    }
+                } else {
+                    // Leaf token that's not a keyword/trivia → named reference
+                    named.push(child.span());
+                }
+            }
+        }
+    }
+}
+
+/// Check if a segment is (or contains only) a single NumberLiteral.
+fn is_single_number_literal(segment: &Segment) -> bool {
+    match segment {
+        Segment::Token(t) => t.segment_type == SegmentType::NumericLiteral,
+        Segment::Node(n) => {
+            let mut non_trivia = n.children.iter().filter(|c| !c.segment_type().is_trivia());
+            match (non_trivia.next(), non_trivia.next()) {
+                (Some(only), None) => is_single_number_literal(only),
+                _ => false,
+            }
+        }
     }
 }
 
@@ -122,24 +153,42 @@ mod tests {
     use crate::test_utils::lint_sql;
 
     #[test]
-    fn test_am06_flags_mixed_references() {
-        // t.a is a qualified ColumnRef (has Dot), b is a bare Identifier (unqualified)
-        let violations = lint_sql("SELECT t.a, b FROM t INNER JOIN u ON t.id = u.id", RuleAM06);
-        assert!(!violations.is_empty());
+    fn test_am06_flags_mixed_group_by() {
+        // Mixing named 'foo' with positional '2'
+        let violations = lint_sql("SELECT foo, bar, SUM(baz) FROM t GROUP BY foo, 2", RuleAM06);
+        assert!(!violations.is_empty(), "Should flag mixed GROUP BY styles");
     }
 
     #[test]
-    fn test_am06_accepts_all_qualified() {
+    fn test_am06_accepts_all_explicit_group_by() {
         let violations = lint_sql(
-            "SELECT t.a, t.b FROM t INNER JOIN u ON t.id = u.id",
+            "SELECT foo, bar, SUM(baz) FROM t GROUP BY foo, bar",
             RuleAM06,
         );
         assert_eq!(violations.len(), 0);
     }
 
     #[test]
-    fn test_am06_accepts_all_unqualified() {
-        let violations = lint_sql("SELECT a, b FROM t", RuleAM06);
+    fn test_am06_accepts_all_positional_group_by() {
+        let violations = lint_sql("SELECT foo, bar, SUM(baz) FROM t GROUP BY 1, 2", RuleAM06);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_am06_flags_mixed_order_by() {
+        let violations = lint_sql("SELECT a, b FROM t ORDER BY a, 2", RuleAM06);
+        assert!(!violations.is_empty(), "Should flag mixed ORDER BY styles");
+    }
+
+    #[test]
+    fn test_am06_accepts_all_explicit_order_by() {
+        let violations = lint_sql("SELECT a, b FROM t ORDER BY a, b", RuleAM06);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_am06_accepts_all_positional_order_by() {
+        let violations = lint_sql("SELECT a, b FROM t ORDER BY 1, 2", RuleAM06);
         assert_eq!(violations.len(), 0);
     }
 }

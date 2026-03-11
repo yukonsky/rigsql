@@ -17,7 +17,7 @@ impl Rule for RuleAL04 {
         "AL04"
     }
     fn name(&self) -> &'static str {
-        "aliasing.unique_table"
+        "aliasing.unique.table"
     }
     fn description(&self) -> &'static str {
         "Table aliases should be unique within a statement."

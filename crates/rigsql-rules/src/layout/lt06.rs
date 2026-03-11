@@ -15,7 +15,7 @@ impl Rule for RuleLT06 {
         "LT06"
     }
     fn name(&self) -> &'static str {
-        "layout.function_paren"
+        "layout.functions"
     }
     fn description(&self) -> &'static str {
         "Function name not followed immediately by parenthesis."

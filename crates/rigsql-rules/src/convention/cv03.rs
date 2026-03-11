@@ -15,7 +15,7 @@ impl Rule for RuleCV03 {
         "CV03"
     }
     fn name(&self) -> &'static str {
-        "convention.trailing_comma_select"
+        "convention.select_trailing_comma"
     }
     fn description(&self) -> &'static str {
         "Trailing comma in SELECT clause."

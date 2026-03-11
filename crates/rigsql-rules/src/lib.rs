@@ -11,6 +11,7 @@ pub mod capitalisation;
 pub mod convention;
 pub mod layout;
 pub mod references;
+pub mod rigsql;
 pub mod structure;
 pub mod tsql;
 
@@ -41,7 +42,7 @@ pub fn default_rules() -> Vec<Box<dyn Rule>> {
         Box::new(layout::lt12::RuleLT12),
         Box::new(layout::lt13::RuleLT13),
         Box::new(layout::lt14::RuleLT14),
-        Box::new(layout::lt15::RuleLT15),
+        Box::new(layout::lt15::RuleLT15::default()),
         // Convention
         Box::new(convention::cv01::RuleCV01::default()),
         Box::new(convention::cv02::RuleCV02),
@@ -52,8 +53,8 @@ pub fn default_rules() -> Vec<Box<dyn Rule>> {
         Box::new(convention::cv07::RuleCV07),
         Box::new(convention::cv08::RuleCV08),
         Box::new(convention::cv09::RuleCV09::default()),
-        Box::new(convention::cv10::RuleCV10),
-        Box::new(convention::cv11::RuleCV11),
+        Box::new(convention::cv10::RuleCV10::default()),
+        Box::new(convention::cv11::RuleCV11::default()),
         Box::new(convention::cv12::RuleCV12),
         // Aliasing
         Box::new(aliasing::al01::RuleAL01),
@@ -61,7 +62,7 @@ pub fn default_rules() -> Vec<Box<dyn Rule>> {
         Box::new(aliasing::al03::RuleAL03),
         Box::new(aliasing::al04::RuleAL04),
         Box::new(aliasing::al05::RuleAL05),
-        Box::new(aliasing::al06::RuleAL06),
+        Box::new(aliasing::al06::RuleAL06::default()),
         Box::new(aliasing::al07::RuleAL07::default()),
         Box::new(aliasing::al08::RuleAL08),
         Box::new(aliasing::al09::RuleAL09),
@@ -99,5 +100,10 @@ pub fn default_rules() -> Vec<Box<dyn Rule>> {
         Box::new(tsql::tq01::RuleTQ01),
         Box::new(tsql::tq02::RuleTQ02),
         Box::new(tsql::tq03::RuleTQ03),
+        // rigsql-specific
+        Box::new(rigsql::rg02::RuleRG02),
+        Box::new(rigsql::rg03::RuleRG03),
+        Box::new(rigsql::rg04::RuleRG04),
+        Box::new(rigsql::rg05::RuleRG05),
     ]
 }
