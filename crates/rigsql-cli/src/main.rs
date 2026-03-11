@@ -28,9 +28,9 @@ enum Commands {
         /// SQL file to parse (use - for stdin)
         file: String,
 
-        /// SQL dialect
-        #[arg(long, default_value = "ansi")]
-        dialect: DialectArg,
+        /// SQL dialect [default: ansi] (overrides config file)
+        #[arg(long)]
+        dialect: Option<DialectArg>,
 
         /// Output format
         #[arg(long, default_value = "tree")]
@@ -42,9 +42,9 @@ enum Commands {
         /// SQL files or directories to lint
         files: Vec<String>,
 
-        /// SQL dialect
-        #[arg(long, default_value = "ansi")]
-        dialect: DialectArg,
+        /// SQL dialect [default: ansi] (overrides config file)
+        #[arg(long)]
+        dialect: Option<DialectArg>,
 
         /// Output format
         #[arg(long, default_value = "human")]
@@ -60,9 +60,9 @@ enum Commands {
         /// SQL files or directories to fix
         files: Vec<String>,
 
-        /// SQL dialect
-        #[arg(long, default_value = "ansi")]
-        dialect: DialectArg,
+        /// SQL dialect [default: ansi] (overrides config file)
+        #[arg(long)]
+        dialect: Option<DialectArg>,
 
         /// Don't write changes, just show what would be fixed
         #[arg(long)]
@@ -114,6 +114,22 @@ enum LintFormat {
     Github,
 }
 
+/// Resolve the effective dialect: CLI flag > config file > "ansi" default.
+fn resolve_dialect(cli_dialect: Option<DialectArg>, config: &Config) -> DialectKind {
+    if let Some(arg) = cli_dialect {
+        return arg.into();
+    }
+    if let Some(ref name) = config.dialect {
+        match name.parse::<DialectKind>() {
+            Ok(d) => return d,
+            Err(_) => {
+                eprintln!("Warning: unknown dialect '{name}' in config, using 'ansi'");
+            }
+        }
+    }
+    DialectKind::Ansi
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -122,7 +138,11 @@ fn main() {
             file,
             dialect,
             format,
-        } => cmd_parse(&file, dialect.into(), format),
+        } => {
+            let config = Config::load_for_path(Path::new(&file));
+            let dialect = resolve_dialect(dialect, &config);
+            cmd_parse(&file, dialect, format);
+        }
 
         Commands::Lint {
             files,
@@ -130,7 +150,9 @@ fn main() {
             format,
             no_color,
         } => {
-            let exit_code = cmd_lint(&files, dialect.into(), format, no_color);
+            let (rules, config) = build_rules(&files);
+            let dialect = resolve_dialect(dialect, &config);
+            let exit_code = cmd_lint(&files, dialect, format, no_color, rules);
             process::exit(exit_code);
         }
 
@@ -140,7 +162,9 @@ fn main() {
             dry_run,
             force,
         } => {
-            let exit_code = cmd_fix(&files, dialect.into(), dry_run, force);
+            let (rules, config) = build_rules(&files);
+            let dialect = resolve_dialect(dialect, &config);
+            let exit_code = cmd_fix(&files, dialect, dry_run, force, rules);
             process::exit(exit_code);
         }
 
@@ -170,7 +194,8 @@ fn cmd_parse(file: &str, dialect: DialectKind, format: ParseFormat) {
 }
 
 /// Build configured rules from config file found near the given paths.
-fn build_rules(files: &[String]) -> Vec<Box<dyn Rule>> {
+/// Returns the rules and the loaded config (so callers can use `config.dialect`).
+fn build_rules(files: &[String]) -> (Vec<Box<dyn Rule>>, Config) {
     let config = files
         .first()
         .map(|f| Config::load_for_path(Path::new(f)))
@@ -198,7 +223,7 @@ fn build_rules(files: &[String]) -> Vec<Box<dyn Rule>> {
         rules.retain(|r| !config.exclude_rules.iter().any(|e| e == r.code()));
     }
 
-    rules
+    (rules, config)
 }
 
 /// Per-file lint result for aggregation after parallel processing.
@@ -210,14 +235,19 @@ struct FileLintResult {
     human_output: Option<String>,
 }
 
-fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color: bool) -> i32 {
+fn cmd_lint(
+    files: &[String],
+    dialect: DialectKind,
+    format: LintFormat,
+    no_color: bool,
+    rules: Vec<Box<dyn Rule>>,
+) -> i32 {
     let sql_files = collect_sql_files(files);
     if sql_files.is_empty() {
         eprintln!("No SQL files found.");
         return 2;
     }
 
-    let rules = build_rules(files);
     let dialect_str = dialect.as_str();
     let formatter = HumanFormatter::new(!no_color);
 
@@ -326,14 +356,18 @@ struct FileFixResult {
     fix_count: usize,
 }
 
-fn cmd_fix(files: &[String], dialect: DialectKind, dry_run: bool, _force: bool) -> i32 {
+fn cmd_fix(
+    files: &[String],
+    dialect: DialectKind,
+    dry_run: bool,
+    _force: bool,
+    all_rules: Vec<Box<dyn Rule>>,
+) -> i32 {
     let sql_files = collect_sql_files(files);
     if sql_files.is_empty() {
         eprintln!("No SQL files found.");
         return 2;
     }
-
-    let all_rules = build_rules(files);
     let dialect_str = dialect.as_str();
 
     // Parallel fix: each file runs its own iterative fix loop
