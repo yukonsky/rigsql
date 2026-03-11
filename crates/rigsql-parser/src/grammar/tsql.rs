@@ -1,49 +1,49 @@
+use std::sync::LazyLock;
+
 use rigsql_core::{NodeSegment, Segment, SegmentType, TokenKind};
 
 use crate::context::ParseContext;
 
-use super::{eat_trivia_segments, parse_statement_list, token_segment, Grammar};
+use super::ansi::ANSI_STATEMENT_KEYWORDS;
+use super::{
+    any_token_segment, eat_trivia_segments, parse_comma_separated, parse_statement_list,
+    token_segment, Grammar,
+};
 
 /// TSQL grammar — extends ANSI with SQL Server–specific statements.
 pub struct TsqlGrammar;
 
-const TSQL_STATEMENT_KEYWORDS: &[&str] = &[
-    "ALTER",
+/// Keywords that can start a TSQL-specific statement (not in ANSI).
+const TSQL_EXTRA_KEYWORDS: &[&str] = &[
     "BEGIN",
-    "BREAK",
-    "CLOSE",
-    "CONTINUE",
-    "CREATE",
-    "DEALLOCATE",
     "DECLARE",
-    "DELETE",
-    "DROP",
-    "ELSE",
-    "END",
     "EXEC",
     "EXECUTE",
-    "FETCH",
     "GO",
     "IF",
-    "INSERT",
-    "MERGE",
-    "OPEN",
     "PRINT",
     "RAISERROR",
     "RETURN",
-    "SELECT",
     "SET",
     "THROW",
-    "TRUNCATE",
-    "UPDATE",
-    "USE",
     "WHILE",
-    "WITH",
 ];
+
+/// Full TSQL statement keywords = ANSI + TSQL extras, sorted.
+static TSQL_STATEMENT_KEYWORDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    let mut kws: Vec<&str> = ANSI_STATEMENT_KEYWORDS
+        .iter()
+        .chain(TSQL_EXTRA_KEYWORDS.iter())
+        .copied()
+        .collect();
+    kws.sort_unstable();
+    kws.dedup();
+    kws
+});
 
 impl Grammar for TsqlGrammar {
     fn statement_keywords(&self) -> &[&str] {
-        TSQL_STATEMENT_KEYWORDS
+        &TSQL_STATEMENT_KEYWORDS
     }
 
     fn dispatch_statement(&self, ctx: &mut ParseContext) -> Option<Segment> {
@@ -73,6 +73,68 @@ impl Grammar for TsqlGrammar {
         } else {
             // Fall back to ANSI dispatch
             self.dispatch_ansi_statement(ctx)
+        }
+    }
+
+    /// TSQL override: additionally tracks BEGIN/END block depth and
+    /// stops at GO batch separators.
+    fn consume_until_end(&self, ctx: &mut ParseContext, children: &mut Vec<Segment>) {
+        let mut paren_depth = 0u32;
+        let mut begin_depth = 0u32;
+        let mut case_depth = 0u32;
+        while !ctx.at_eof() {
+            match ctx.peek_kind() {
+                Some(TokenKind::Semicolon) if paren_depth == 0 && begin_depth == 0 => break,
+                Some(TokenKind::LParen) => {
+                    paren_depth += 1;
+                    let token = ctx.advance().unwrap();
+                    children.push(any_token_segment(token));
+                }
+                Some(TokenKind::RParen) => {
+                    paren_depth = paren_depth.saturating_sub(1);
+                    let token = ctx.advance().unwrap();
+                    children.push(any_token_segment(token));
+                }
+                _ => {
+                    let t = ctx.peek().unwrap();
+                    if t.kind == TokenKind::Word {
+                        if t.text.eq_ignore_ascii_case("BEGIN") {
+                            begin_depth += 1;
+                            let token = ctx.advance().unwrap();
+                            children.push(any_token_segment(token));
+                            continue;
+                        } else if t.text.eq_ignore_ascii_case("CASE") {
+                            case_depth += 1;
+                            let token = ctx.advance().unwrap();
+                            children.push(any_token_segment(token));
+                            continue;
+                        } else if t.text.eq_ignore_ascii_case("END") {
+                            if case_depth > 0 {
+                                case_depth -= 1;
+                                let token = ctx.advance().unwrap();
+                                children.push(any_token_segment(token));
+                                continue;
+                            }
+                            if begin_depth > 0 {
+                                begin_depth -= 1;
+                                let token = ctx.advance().unwrap();
+                                children.push(any_token_segment(token));
+                                if begin_depth == 0 && paren_depth == 0 {
+                                    break;
+                                }
+                                continue;
+                            }
+                        } else if t.text.eq_ignore_ascii_case("GO")
+                            && paren_depth == 0
+                            && begin_depth == 0
+                        {
+                            break;
+                        }
+                    }
+                    let token = ctx.advance().unwrap();
+                    children.push(any_token_segment(token));
+                }
+            }
         }
     }
 }
@@ -445,33 +507,13 @@ impl TsqlGrammar {
 
     /// Parse EXEC parameters: comma-separated, optionally @param = expr
     fn parse_exec_params(&self, ctx: &mut ParseContext, children: &mut Vec<Segment>) {
-        // Parse first param if present
         if ctx.at_eof()
             || ctx.peek_kind() == Some(TokenKind::Semicolon)
             || self.peek_statement_start(ctx)
         {
             return;
         }
-
-        if let Some(expr) = self.parse_expression(ctx) {
-            children.push(expr);
-        }
-
-        loop {
-            let save = ctx.save();
-            let trivia = eat_trivia_segments(ctx);
-            if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
-                children.extend(trivia);
-                children.push(token_segment(comma, SegmentType::Comma));
-                children.extend(eat_trivia_segments(ctx));
-                if let Some(expr) = self.parse_expression(ctx) {
-                    children.push(expr);
-                }
-            } else {
-                ctx.restore(save);
-                break;
-            }
-        }
+        parse_comma_separated(ctx, children, |c| self.parse_expression(c));
     }
 
     /// Parse RETURN [expr]
