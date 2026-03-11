@@ -76,6 +76,63 @@ impl Grammar for TsqlGrammar {
         }
     }
 
+    /// TSQL table hints: WITH(NOLOCK), WITH(READUNCOMMITTED), etc.
+    fn parse_table_hint(&self, ctx: &mut ParseContext) -> Option<Segment> {
+        // Must start with WITH followed immediately (after optional whitespace) by '('
+        if !ctx.peek_keyword("WITH") {
+            return None;
+        }
+        // Speculatively try: WITH ( hint_list )
+        let save = ctx.save();
+        let with_kw = ctx.eat_keyword("WITH")?;
+        let trivia_after_with = eat_trivia_segments(ctx);
+        if ctx.peek_kind() != Some(TokenKind::LParen) {
+            ctx.restore(save);
+            return None;
+        }
+        let lparen = ctx.advance().unwrap();
+
+        let mut children = Vec::new();
+        children.push(token_segment(with_kw, SegmentType::Keyword));
+        children.extend(trivia_after_with);
+        children.push(token_segment(lparen, SegmentType::LParen));
+        children.extend(eat_trivia_segments(ctx));
+
+        // Parse comma-separated hint keywords
+        let mut first = true;
+        while !ctx.at_eof() && ctx.peek_kind() != Some(TokenKind::RParen) {
+            if !first {
+                if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
+                    children.push(token_segment(comma, SegmentType::Comma));
+                    children.extend(eat_trivia_segments(ctx));
+                } else {
+                    break;
+                }
+            }
+            first = false;
+            if ctx.peek_kind() == Some(TokenKind::Word) {
+                let hint = ctx.advance().unwrap();
+                children.push(token_segment(hint, SegmentType::Keyword));
+                children.extend(eat_trivia_segments(ctx));
+            } else {
+                break;
+            }
+        }
+
+        if let Some(rparen) = ctx.eat_kind(TokenKind::RParen) {
+            children.push(token_segment(rparen, SegmentType::RParen));
+        } else {
+            // Malformed hint — roll back
+            ctx.restore(save);
+            return None;
+        }
+
+        Some(Segment::Node(NodeSegment::new(
+            SegmentType::TableHint,
+            children,
+        )))
+    }
+
     /// TSQL override: additionally tracks BEGIN/END block depth and
     /// stops at GO batch separators.
     fn consume_until_end(&self, ctx: &mut ParseContext, children: &mut Vec<Segment>) {

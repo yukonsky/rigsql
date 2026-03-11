@@ -477,6 +477,63 @@ mod tests {
         assert_eq!(cst.raw(), sql);
     }
 
+    // ── TSQL Table Hint Tests ────────────────────────────────────
+
+    #[test]
+    fn test_tsql_with_nolock() {
+        let sql = "SELECT * FROM orders WITH(NOLOCK) WHERE id = 1";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::TableHint).is_some());
+        assert!(find_type(&cst, SegmentType::FromClause).is_some());
+        assert!(find_type(&cst, SegmentType::WhereClause).is_some());
+        assert_eq!(cst.raw(), sql);
+    }
+
+    #[test]
+    fn test_tsql_with_nolock_alias() {
+        let sql = "SELECT o.id FROM orders o WITH(NOLOCK)";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::TableHint).is_some());
+        assert!(find_type(&cst, SegmentType::AliasExpression).is_some());
+        assert_eq!(cst.raw(), sql);
+    }
+
+    #[test]
+    fn test_tsql_with_nolock_join() {
+        let sql = "SELECT a.id FROM orders a WITH(NOLOCK) INNER JOIN items b WITH(READUNCOMMITTED) ON a.id = b.order_id";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        // Two table hints
+        let mut hint_count = 0;
+        cst.walk(&mut |s| {
+            if s.segment_type() == SegmentType::TableHint {
+                hint_count += 1;
+            }
+        });
+        assert_eq!(hint_count, 2);
+        assert!(find_type(&cst, SegmentType::JoinClause).is_some());
+        assert_eq!(cst.raw(), sql);
+    }
+
+    #[test]
+    fn test_tsql_with_multiple_hints() {
+        let sql = "SELECT * FROM orders WITH(NOLOCK, NOWAIT)";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::TableHint).is_some());
+        assert_eq!(cst.raw(), sql);
+    }
+
+    #[test]
+    fn test_tsql_with_nolock_roundtrip() {
+        let sql = "SELECT o.id, o.total\nFROM orders o WITH(NOLOCK)\nINNER JOIN customers c WITH(NOLOCK) ON o.customer_id = c.id\nWHERE c.active = 1\nORDER BY o.id";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert_eq!(cst.raw(), sql);
+    }
+
     // ── Error Recovery Tests ──────────────────────────────────────
 
     fn count_unparsable(seg: &Segment) -> usize {
