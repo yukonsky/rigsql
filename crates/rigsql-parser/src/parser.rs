@@ -2,7 +2,7 @@ use rigsql_core::Segment;
 use rigsql_lexer::{Lexer, LexerConfig, LexerError};
 use thiserror::Error;
 
-use crate::context::ParseContext;
+use crate::context::{ParseContext, ParseDiagnostic};
 #[cfg(test)]
 use crate::grammar::TsqlGrammar;
 use crate::grammar::{AnsiGrammar, Grammar};
@@ -11,6 +11,17 @@ use crate::grammar::{AnsiGrammar, Grammar};
 pub enum ParseError {
     #[error("Lexer error: {0}")]
     Lexer(#[from] LexerError),
+}
+
+/// Result of parsing: a CST (always produced) plus any diagnostics
+/// collected during error-recovery passes.
+pub struct ParseResult {
+    /// The concrete syntax tree.  Always present — unparsable regions
+    /// are wrapped in `SegmentType::Unparsable` nodes.
+    pub tree: Segment,
+    /// Diagnostics emitted by the parser when it encountered
+    /// unrecognised tokens and had to skip ahead.
+    pub diagnostics: Vec<ParseDiagnostic>,
 }
 
 /// High-level SQL parser: source text → CST.
@@ -29,11 +40,18 @@ impl Parser {
 
     /// Parse SQL source into a CST rooted at a File segment.
     pub fn parse(&self, source: &str) -> Result<Segment, ParseError> {
+        self.parse_with_diagnostics(source).map(|r| r.tree)
+    }
+
+    /// Parse SQL source, returning both the CST and any diagnostics
+    /// produced during error recovery.
+    pub fn parse_with_diagnostics(&self, source: &str) -> Result<ParseResult, ParseError> {
         let mut lexer = Lexer::new(source, self.lexer_config.clone());
         let tokens = lexer.tokenize()?;
         let mut ctx = ParseContext::new(&tokens, source);
-        let file = self.grammar.parse_file(&mut ctx);
-        Ok(file)
+        let tree = self.grammar.parse_file(&mut ctx);
+        let diagnostics = ctx.take_diagnostics();
+        Ok(ParseResult { tree, diagnostics })
     }
 }
 
@@ -457,5 +475,107 @@ mod tests {
         let cst = parse_tsql(sql);
         assert_no_unparsable(&cst);
         assert_eq!(cst.raw(), sql);
+    }
+
+    // ── Error Recovery Tests ──────────────────────────────────────
+
+    fn count_unparsable(seg: &Segment) -> usize {
+        let mut count = 0;
+        seg.walk(&mut |s| {
+            if s.segment_type() == SegmentType::Unparsable {
+                count += 1;
+            }
+        });
+        count
+    }
+
+    #[test]
+    fn test_error_recovery_garbage_then_valid() {
+        // Garbage tokens followed by a valid statement
+        let sql = "XYZZY FOOBAR; SELECT 1;";
+        let cst = parse(sql);
+        assert_eq!(cst.raw(), sql, "roundtrip must preserve source");
+        // The garbage should be in one Unparsable node
+        assert_eq!(count_unparsable(&cst), 1);
+        // The valid SELECT should still parse
+        assert!(find_type(&cst, SegmentType::SelectClause).is_some());
+    }
+
+    #[test]
+    fn test_error_recovery_garbage_between_statements() {
+        // Valid, garbage, valid
+        let sql = "SELECT 1; NOTAKEYWORD 123 'abc'; SELECT 2;";
+        let cst = parse(sql);
+        assert_eq!(cst.raw(), sql);
+        assert_eq!(count_unparsable(&cst), 1);
+        let stmts: Vec<_> = cst
+            .children()
+            .iter()
+            .filter(|s| s.segment_type() == SegmentType::Statement)
+            .collect();
+        assert_eq!(stmts.len(), 2);
+    }
+
+    #[test]
+    fn test_error_recovery_garbage_at_end() {
+        let sql = "SELECT 1; XYZZY";
+        let cst = parse(sql);
+        assert_eq!(cst.raw(), sql);
+        assert_eq!(count_unparsable(&cst), 1);
+        assert!(find_type(&cst, SegmentType::SelectClause).is_some());
+    }
+
+    #[test]
+    fn test_error_recovery_skips_to_statement_keyword() {
+        // Garbage followed directly by SELECT (no semicolon separator)
+        let sql = "XYZZY SELECT 1;";
+        let cst = parse(sql);
+        assert_eq!(cst.raw(), sql);
+        assert_eq!(count_unparsable(&cst), 1);
+        assert!(find_type(&cst, SegmentType::SelectClause).is_some());
+    }
+
+    #[test]
+    fn test_error_recovery_diagnostics() {
+        let parser = Parser::default();
+        let result = parser.parse_with_diagnostics("XYZZY; SELECT 1;").unwrap();
+        assert!(!result.diagnostics.is_empty());
+        assert!(result.diagnostics[0].message.contains("Unparsable"));
+        // Offset should point to the start of the unparsable region (byte 0 = 'X')
+        assert_eq!(result.diagnostics[0].offset, 0);
+        // CST still produced
+        assert!(find_type(&result.tree, SegmentType::SelectClause).is_some());
+    }
+
+    #[test]
+    fn test_error_recovery_diagnostics_offset_mid_file() {
+        let parser = Parser::default();
+        // "SELECT 1; " = 10 bytes, then garbage starts
+        let result = parser
+            .parse_with_diagnostics("SELECT 1; BADTOKEN;")
+            .unwrap();
+        assert_eq!(result.diagnostics.len(), 1);
+        // Offset should point to 'B' in BADTOKEN, not to ';' or beyond
+        assert_eq!(result.diagnostics[0].offset, 10);
+    }
+
+    #[test]
+    fn test_error_recovery_all_garbage() {
+        let sql = "NOTAKEYWORD 123 'hello'";
+        let cst = parse(sql);
+        assert_eq!(cst.raw(), sql);
+        // Everything should be unparsable but still present
+        assert!(count_unparsable(&cst) >= 1);
+    }
+
+    #[test]
+    fn test_error_recovery_preserves_valid_statements() {
+        // Multiple valid statements with garbage in the middle
+        let sql = "INSERT INTO t VALUES (1); BADTOKEN; DELETE FROM t WHERE id = 1;";
+        let cst = parse(sql);
+        assert_eq!(cst.raw(), sql);
+        assert!(find_type(&cst, SegmentType::InsertStatement).is_some());
+        assert!(find_type(&cst, SegmentType::DeleteStatement).is_some());
+        assert_eq!(count_unparsable(&cst), 1);
     }
 }
