@@ -15,7 +15,7 @@ impl Rule for RuleLT10 {
         "LT10"
     }
     fn name(&self) -> &'static str {
-        "layout.select_modifier"
+        "layout.select_modifiers"
     }
     fn description(&self) -> &'static str {
         "SELECT modifiers (DISTINCT, ALL) must be on same line as SELECT."

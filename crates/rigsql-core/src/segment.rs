@@ -115,6 +115,9 @@ pub enum SegmentType {
     OnConflictClause,
     ArrayAccessExpression,
 
+    // TSQL
+    TableHint,
+
     // TSQL Statements
     DeclareStatement,
     SetVariableStatement,

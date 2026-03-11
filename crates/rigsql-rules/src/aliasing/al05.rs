@@ -52,9 +52,10 @@ impl Rule for RuleAL05 {
             return vec![];
         }
 
-        // Get the full source text of the statement (parent or root)
-        let statement = ctx.parent.unwrap_or(ctx.root);
-        let raw = statement.raw().to_lowercase();
+        // Search the root (File) for references, not just the parent statement.
+        // When parsing partially fails, references may end up in sibling Unparsable
+        // segments outside the parent SelectStatement.
+        let raw = ctx.root.raw().to_lowercase();
 
         let mut violations = Vec::new();
         for (name, span) in &cte_names {

@@ -337,6 +337,11 @@ impl<'a> Lexer<'a> {
                     self.pos += 1;
                 }
                 self.eat_word_chars();
+                // N'...' is a Unicode/NVARCHAR string literal prefix
+                let word = &self.source[start..self.pos];
+                if word.eq_ignore_ascii_case("N") && self.peek() == Some(b'\'') {
+                    return self.lex_string_literal(start);
+                }
                 Ok(self.make_token(TokenKind::Word, start))
             }
 

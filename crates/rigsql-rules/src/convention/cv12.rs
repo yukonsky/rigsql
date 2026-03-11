@@ -3,10 +3,10 @@ use rigsql_core::SegmentType;
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
 use crate::violation::LintViolation;
 
-/// CV12: Use of HAVING without GROUP BY.
+/// CV12: Use JOIN … ON … instead of WHERE … for join conditions.
 ///
-/// A HAVING clause without a corresponding GROUP BY is likely a mistake;
-/// use WHERE instead, or add the missing GROUP BY.
+/// When FROM has comma-separated tables and WHERE contains join conditions,
+/// prefer explicit JOIN syntax.
 #[derive(Debug, Default)]
 pub struct RuleCV12;
 
@@ -15,15 +15,15 @@ impl Rule for RuleCV12 {
         "CV12"
     }
     fn name(&self) -> &'static str {
-        "convention.having_without_group_by"
+        "convention.join_condition"
     }
     fn description(&self) -> &'static str {
-        "Use of HAVING without GROUP BY."
+        "Use JOIN … ON … instead of implicit join in WHERE."
     }
     fn explanation(&self) -> &'static str {
-        "HAVING is designed to filter grouped results. Using HAVING without GROUP BY \
-         treats the entire result set as a single group, which is almost always a mistake. \
-         Use WHERE for filtering ungrouped rows, or add the missing GROUP BY clause."
+        "Using comma-separated tables in FROM with join conditions in WHERE (implicit join) \
+         mixes join logic with filtering. Use explicit JOIN … ON … syntax to separate join \
+         conditions from filter conditions, improving readability and maintainability."
     }
     fn groups(&self) -> &[RuleGroup] {
         &[RuleGroup::Convention]
@@ -39,29 +39,34 @@ impl Rule for RuleCV12 {
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
         let children = ctx.segment.children();
 
-        let has_having = children
+        // Find FROM clause
+        let from_clause = children
             .iter()
-            .any(|c| c.segment_type() == SegmentType::HavingClause);
-        let has_group_by = children
+            .find(|c| c.segment_type() == SegmentType::FromClause);
+        let where_clause = children
             .iter()
-            .any(|c| c.segment_type() == SegmentType::GroupByClause);
+            .find(|c| c.segment_type() == SegmentType::WhereClause);
 
-        if has_having && !has_group_by {
-            // Find the HavingClause span to report on
-            let having_span = children
-                .iter()
-                .find(|c| c.segment_type() == SegmentType::HavingClause)
-                .map(|c| c.span())
-                .unwrap_or(ctx.segment.span());
+        let (Some(from), Some(where_seg)) = (from_clause, where_clause) else {
+            return vec![];
+        };
 
-            return vec![LintViolation::new(
-                self.code(),
-                "HAVING clause without GROUP BY. Use WHERE for ungrouped filtering.",
-                having_span,
-            )];
+        // Check if FROM has comma-separated tables (contains Comma)
+        let has_comma = from
+            .children()
+            .iter()
+            .any(|c| c.segment_type() == SegmentType::Comma);
+
+        if !has_comma {
+            return vec![];
         }
 
-        vec![]
+        // FROM has comma-separated tables + WHERE exists → implicit join
+        vec![LintViolation::new(
+            self.code(),
+            "Use explicit JOIN … ON … instead of comma-separated tables with WHERE.",
+            where_seg.span(),
+        )]
     }
 }
 
@@ -71,17 +76,20 @@ mod tests {
     use crate::test_utils::lint_sql;
 
     #[test]
-    fn test_cv12_flags_having_without_group_by() {
-        let violations = lint_sql("SELECT COUNT(*) FROM t HAVING COUNT(*) > 1", RuleCV12);
+    fn test_cv12_flags_implicit_join() {
+        let violations = lint_sql("SELECT * FROM a, b WHERE a.id = b.id", RuleCV12);
         assert_eq!(violations.len(), 1);
     }
 
     #[test]
-    fn test_cv12_accepts_having_with_group_by() {
-        let violations = lint_sql(
-            "SELECT a, COUNT(*) FROM t GROUP BY a HAVING COUNT(*) > 1",
-            RuleCV12,
-        );
+    fn test_cv12_accepts_explicit_join() {
+        let violations = lint_sql("SELECT * FROM a JOIN b ON a.id = b.id", RuleCV12);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv12_accepts_single_table_where() {
+        let violations = lint_sql("SELECT * FROM t WHERE x = 1", RuleCV12);
         assert_eq!(violations.len(), 0);
     }
 }

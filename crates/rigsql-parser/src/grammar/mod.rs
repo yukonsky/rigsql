@@ -24,6 +24,13 @@ pub trait Grammar: Send + Sync {
     /// Called from `parse_statement` after consuming leading trivia.
     fn dispatch_statement(&self, ctx: &mut ParseContext) -> Option<Segment>;
 
+    /// Parse an optional table hint after a table reference.
+    /// Default returns `None` (ANSI has no table hints).
+    /// TSQL overrides this to handle `WITH(NOLOCK)` etc.
+    fn parse_table_hint(&self, _ctx: &mut ParseContext) -> Option<Segment> {
+        None
+    }
+
     /// ANSI-only statement dispatch.  Dialect impls can call this as fallback.
     fn dispatch_ansi_statement(&self, ctx: &mut ParseContext) -> Option<Segment> {
         if ctx.peek_keyword("SELECT") || ctx.peek_keyword("WITH") {
@@ -294,8 +301,12 @@ pub trait Grammar: Send + Sync {
             let as_kw = ctx.advance().unwrap();
             children.push(token_segment(as_kw, SegmentType::Keyword));
             children.extend(eat_trivia_segments(ctx));
+            // Alias can be an identifier or a string literal (e.g. AS '日本語名')
             if let Some(alias) = self.parse_identifier(ctx) {
                 children.push(alias);
+            } else if ctx.peek_kind() == Some(TokenKind::StringLiteral) {
+                let token = ctx.advance().unwrap();
+                children.push(token_segment(token, SegmentType::StringLiteral));
             }
             return Some(Segment::Node(NodeSegment::new(
                 SegmentType::AliasExpression,
@@ -353,6 +364,31 @@ pub trait Grammar: Send + Sync {
     }
 
     fn parse_table_reference(&self, ctx: &mut ParseContext) -> Option<Segment> {
+        let table_ref = self.parse_table_reference_core(ctx)?;
+
+        // Optional table hint (e.g. TSQL WITH(NOLOCK))
+        let save_hint = ctx.save();
+        let trivia = eat_trivia_segments(ctx);
+        if let Some(hint) = self.parse_table_hint(ctx) {
+            // Wrap: table_ref + trivia + hint into a TableRef node
+            let children = vec![table_ref]
+                .into_iter()
+                .chain(trivia)
+                .chain(std::iter::once(hint))
+                .collect();
+            Some(Segment::Node(NodeSegment::new(
+                SegmentType::TableRef,
+                children,
+            )))
+        } else {
+            ctx.restore(save_hint);
+            Some(table_ref)
+        }
+    }
+
+    /// Core table reference parsing (name/subquery + optional alias),
+    /// without table hints.  Called by `parse_table_reference`.
+    fn parse_table_reference_core(&self, ctx: &mut ParseContext) -> Option<Segment> {
         let save = ctx.save();
 
         // Subquery in parens

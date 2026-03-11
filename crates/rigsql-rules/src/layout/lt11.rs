@@ -14,7 +14,7 @@ impl Rule for RuleLT11 {
         "LT11"
     }
     fn name(&self) -> &'static str {
-        "layout.set_operator_newline"
+        "layout.set_operators"
     }
     fn description(&self) -> &'static str {
         "Set operators should be surrounded by newlines."

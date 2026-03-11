@@ -17,7 +17,7 @@ impl Rule for RuleAL08 {
         "AL08"
     }
     fn name(&self) -> &'static str {
-        "aliasing.unique_column"
+        "aliasing.unique.column"
     }
     fn description(&self) -> &'static str {
         "Column aliases should be unique within each statement."

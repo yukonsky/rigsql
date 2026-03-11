@@ -1,4 +1,4 @@
-use rigsql_core::{Segment, SegmentType};
+use rigsql_core::{Segment, SegmentType, TokenKind};
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
 use crate::violation::LintViolation;
@@ -44,18 +44,14 @@ impl Rule for RuleRF02 {
             return vec![];
         }
 
-        // Find unqualified column references in the SelectClause
+        // Find unqualified column references across all relevant clauses
         let mut violations = Vec::new();
-        find_unqualified_select_columns(ctx.segment, &mut violations, self.code());
+        collect_unqualified_columns(ctx.segment, &mut violations, self.code(), false);
         violations
     }
 }
 
 /// Count tables referenced in FROM and JOIN clauses.
-///
-/// The parser emits tables as direct Identifier/AliasExpression children of
-/// FromClause (for the main table) and JoinClause (for joined tables).
-/// JoinClause is nested inside FromClause.
 fn count_tables(stmt: &Segment) -> usize {
     let mut count = 0;
     for child in stmt.children() {
@@ -75,13 +71,17 @@ fn count_tables_in_clause(clause: &Segment) -> usize {
             | SegmentType::AliasExpression => {
                 count += 1;
             }
+            SegmentType::QualifiedIdentifier => {
+                // e.g., schema.table — counts as one table
+                count += 1;
+            }
             SegmentType::JoinClause => {
-                // The join clause has its own table reference
                 for join_child in child.children() {
                     match join_child.segment_type() {
                         SegmentType::Identifier
                         | SegmentType::QuotedIdentifier
-                        | SegmentType::AliasExpression => {
+                        | SegmentType::AliasExpression
+                        | SegmentType::QualifiedIdentifier => {
                             count += 1;
                             break;
                         }
@@ -95,23 +95,80 @@ fn count_tables_in_clause(clause: &Segment) -> usize {
     count
 }
 
-/// Find unqualified column references in the SelectClause.
-///
-/// In the parser's CST, unqualified column references in SELECT are bare
-/// Identifier tokens (not wrapped in ColumnRef). Qualified references use
-/// ColumnRef with Identifier.Dot.Identifier children.
-fn find_unqualified_select_columns(
-    stmt: &Segment,
+/// Contexts where bare Identifiers are likely column references.
+const COLUMN_CONTEXTS: &[SegmentType] = &[
+    SegmentType::SelectClause,
+    SegmentType::WhereClause,
+    SegmentType::HavingClause,
+    SegmentType::OrderByClause,
+    SegmentType::GroupByClause,
+    SegmentType::OnClause,
+    SegmentType::OrderByExpression,
+    SegmentType::BinaryExpression,
+];
+
+/// Segment types that represent table sources, not column references.
+const TABLE_SOURCE_CONTEXTS: &[SegmentType] = &[SegmentType::FromClause, SegmentType::JoinClause];
+
+/// Recursively find unqualified column references in column-relevant clauses.
+fn collect_unqualified_columns(
+    segment: &Segment,
     violations: &mut Vec<LintViolation>,
     code: &'static str,
+    in_table_source: bool,
 ) {
-    for child in stmt.children() {
-        if child.segment_type() == SegmentType::SelectClause {
-            for sel_child in child.children() {
-                // A bare Identifier in the SelectClause that is not a keyword is an
-                // unqualified column reference
-                if sel_child.segment_type() == SegmentType::Identifier {
-                    if let Segment::Token(t) = sel_child {
+    // Skip subqueries to avoid cross-scope analysis
+    if segment.segment_type() == SegmentType::Subquery {
+        return;
+    }
+
+    let st = segment.segment_type();
+    let is_table_source = in_table_source || TABLE_SOURCE_CONTEXTS.contains(&st);
+
+    // QualifiedIdentifier / ColumnRef in table sources are table names, skip them
+    match st {
+        SegmentType::QualifiedIdentifier | SegmentType::ColumnRef => {
+            if is_table_source {
+                return;
+            }
+            // In column context: qualified refs are fine, only unqualified are violations
+            let has_dot = segment
+                .children()
+                .iter()
+                .any(|c| c.segment_type() == SegmentType::Dot);
+            if !has_dot {
+                // Unqualified column ref
+                if let Some(Segment::Token(t)) = segment
+                    .children()
+                    .iter()
+                    .find(|c| c.segment_type() == SegmentType::Identifier)
+                {
+                    // Skip TSQL variables (@var)
+                    if t.token.kind == TokenKind::AtSign {
+                        return;
+                    }
+                    violations.push(LintViolation::new(
+                        code,
+                        format!(
+                            "Unqualified column reference '{}' in multi-table query.",
+                            t.token.text
+                        ),
+                        t.token.span,
+                    ));
+                }
+            }
+            return;
+        }
+        _ => {}
+    }
+
+    // In column-relevant contexts, bare Identifiers are likely column references
+    if COLUMN_CONTEXTS.contains(&st) {
+        for child in segment.children() {
+            if child.segment_type() == SegmentType::Identifier {
+                if let Segment::Token(t) = child {
+                    // Skip TSQL variables (@var) — they're not column references
+                    if t.token.kind != TokenKind::AtSign {
                         violations.push(LintViolation::new(
                             code,
                             format!(
@@ -122,8 +179,15 @@ fn find_unqualified_select_columns(
                         ));
                     }
                 }
+            } else {
+                collect_unqualified_columns(child, violations, code, is_table_source);
             }
         }
+        return;
+    }
+
+    for child in segment.children() {
+        collect_unqualified_columns(child, violations, code, is_table_source);
     }
 }
 
@@ -154,6 +218,35 @@ mod tests {
     #[test]
     fn test_rf02_accepts_single_table() {
         let violations = lint_sql("SELECT id FROM users", RuleRF02);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_rf02_flags_unqualified_in_where() {
+        let violations = lint_sql(
+            "SELECT u.id FROM users u JOIN orders o ON u.id = o.user_id WHERE status = 1",
+            RuleRF02,
+        );
+        assert!(
+            !violations.is_empty(),
+            "Should flag unqualified 'status' in WHERE"
+        );
+    }
+
+    #[test]
+    fn test_rf02_ignores_qualified_table_in_from() {
+        // sys.columns is a table name, not a column ref
+        let violations = lint_sql("SELECT name FROM sys.columns WHERE object_id = 1", RuleRF02);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_rf02_ignores_tsql_variables() {
+        // @SiteName is a TSQL variable, not a column reference
+        let violations = lint_sql(
+            "SELECT t1.a FROM t1 JOIN t2 ON t1.id = t2.id WHERE t1.x = @SiteName",
+            RuleRF02,
+        );
         assert_eq!(violations.len(), 0);
     }
 }
