@@ -103,6 +103,8 @@ enum ParseFormat {
 enum LintFormat {
     Human,
     Json,
+    Sarif,
+    Github,
 }
 
 fn main() {
@@ -321,7 +323,7 @@ fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color
                     print!("{output}");
                 }
             }
-            LintFormat::Json => {
+            LintFormat::Json | LintFormat::Sarif | LintFormat::Github => {
                 json_results.push((path.clone(), source, violations));
             }
         }
@@ -333,15 +335,29 @@ fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color
                 formatter.format_summary(sql_files.len(), files_with_violations, total_violations);
             print!("{summary}");
         }
-        LintFormat::Json => {
+        LintFormat::Json | LintFormat::Sarif | LintFormat::Github => {
             let refs: Vec<(&Path, &str, &[rigsql_rules::LintViolation])> = json_results
                 .iter()
                 .map(|(p, s, v)| (p.as_path(), s.as_str(), v.as_slice()))
                 .collect();
-            println!(
-                "{}",
-                rigsql_output::JsonFormatter::format_with_rules(&refs, &rules)
-            );
+            match format {
+                LintFormat::Json => {
+                    println!(
+                        "{}",
+                        rigsql_output::JsonFormatter::format_with_rules(&refs, &rules)
+                    );
+                }
+                LintFormat::Sarif => {
+                    println!(
+                        "{}",
+                        rigsql_output::SarifFormatter::format_with_rules(&refs, &rules)
+                    );
+                }
+                LintFormat::Github => {
+                    print!("{}", rigsql_output::GithubFormatter::format(&refs));
+                }
+                LintFormat::Human => unreachable!(),
+            }
         }
     }
 

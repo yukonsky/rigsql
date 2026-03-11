@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use rigsql_core::{Segment, SegmentType};
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
+use crate::utils::extract_alias_name;
 use crate::violation::LintViolation;
 
 /// AL04: Table aliases should be unique within a statement.
@@ -40,11 +43,11 @@ impl Rule for RuleAL04 {
         collect_table_aliases(ctx.segment, &mut aliases);
 
         let mut violations = Vec::new();
-        let mut seen: Vec<(String, rigsql_core::Span)> = Vec::new();
+        let mut seen: HashMap<String, rigsql_core::Span> = HashMap::new();
 
         for (name, span) in &aliases {
             let lower = name.to_lowercase();
-            if let Some((_, first_span)) = seen.iter().find(|(n, _)| *n == lower) {
+            if let Some(first_span) = seen.get(&lower) {
                 violations.push(LintViolation::new(
                     self.code(),
                     format!(
@@ -54,7 +57,7 @@ impl Rule for RuleAL04 {
                     *span,
                 ));
             } else {
-                seen.push((lower, *span));
+                seen.insert(lower, *span);
             }
         }
 
@@ -89,7 +92,7 @@ fn collect_table_aliases(segment: &Segment, aliases: &mut Vec<(String, rigsql_co
 /// Find AliasExpression nodes and extract the alias name (last identifier).
 fn find_alias_names(segment: &Segment, aliases: &mut Vec<(String, rigsql_core::Span)>) {
     if segment.segment_type() == SegmentType::AliasExpression {
-        if let Some(name) = extract_alias_name(segment) {
+        if let Some(name) = extract_alias_name(segment.children()) {
             aliases.push((name, segment.span()));
         }
         return;
@@ -103,28 +106,4 @@ fn find_alias_names(segment: &Segment, aliases: &mut Vec<(String, rigsql_core::S
     for child in segment.children() {
         find_alias_names(child, aliases);
     }
-}
-
-/// Extract the alias name from an AliasExpression.
-/// The alias name is typically the last Identifier after AS keyword.
-fn extract_alias_name(alias_expr: &Segment) -> Option<String> {
-    let children = alias_expr.children();
-    // Walk children in reverse to find the last identifier (the alias name)
-    for child in children.iter().rev() {
-        let st = child.segment_type();
-        if st == SegmentType::Identifier || st == SegmentType::QuotedIdentifier {
-            if let Segment::Token(t) = child {
-                return Some(t.token.text.to_string());
-            }
-        }
-        // Skip trivia
-        if st.is_trivia() {
-            continue;
-        }
-        // If we hit something that's not trivia or identifier, stop
-        if st != SegmentType::Keyword {
-            break;
-        }
-    }
-    None
 }

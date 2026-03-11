@@ -107,6 +107,27 @@ pub fn is_false_alias(children: &[Segment]) -> bool {
     false
 }
 
+/// Extract the alias name from an AliasExpression.
+/// The alias name is the last Identifier or QuotedIdentifier before any
+/// non-trivia, non-keyword segment (scanning from the end).
+pub fn extract_alias_name(children: &[Segment]) -> Option<String> {
+    for child in children.iter().rev() {
+        let st = child.segment_type();
+        if st == SegmentType::Identifier || st == SegmentType::QuotedIdentifier {
+            if let Segment::Token(t) = child {
+                return Some(t.token.text.to_string());
+            }
+        }
+        if st.is_trivia() {
+            continue;
+        }
+        if st != SegmentType::Keyword {
+            break;
+        }
+    }
+    None
+}
+
 /// Find a keyword by case-insensitive name in children. Returns (index, segment).
 pub fn find_keyword_in_children<'a>(
     children: &'a [Segment],
