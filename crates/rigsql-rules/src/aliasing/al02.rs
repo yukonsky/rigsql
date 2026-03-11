@@ -1,8 +1,8 @@
 use rigsql_core::SegmentType;
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::utils::{has_as_keyword, is_false_alias};
-use crate::violation::{LintViolation, SourceEdit};
+use crate::utils::{has_as_keyword, insert_as_keyword_fix, is_false_alias};
+use crate::violation::LintViolation;
 
 /// AL02: Implicit aliasing of columns is not allowed.
 ///
@@ -38,36 +38,23 @@ impl Rule for RuleAL02 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
-        // Only flag if parent is SelectClause (column aliases, not table aliases)
         let is_in_select = ctx
             .parent
             .is_some_and(|p| p.segment_type() == SegmentType::SelectClause);
-
         if !is_in_select {
             return vec![];
         }
 
-        // Skip if the "alias" is actually a misidentified keyword (e.g. OVER)
-        if is_false_alias(ctx.segment.children()) {
+        let children = ctx.segment.children();
+        if is_false_alias(children) || has_as_keyword(children) {
             return vec![];
         }
 
-        if !has_as_keyword(ctx.segment.children()) {
-            let children = ctx.segment.children();
-            let fix = children
-                .iter()
-                .rev()
-                .find(|c| !c.segment_type().is_trivia())
-                .map(|alias| SourceEdit::insert(alias.span().start, "AS "));
-
-            return vec![LintViolation::with_fix(
-                self.code(),
-                "Implicit column aliasing not allowed. Use explicit AS keyword.",
-                ctx.segment.span(),
-                fix.into_iter().collect(),
-            )];
-        }
-
-        vec![]
+        vec![LintViolation::with_fix(
+            self.code(),
+            "Implicit column aliasing not allowed. Use explicit AS keyword.",
+            ctx.segment.span(),
+            insert_as_keyword_fix(children),
+        )]
     }
 }

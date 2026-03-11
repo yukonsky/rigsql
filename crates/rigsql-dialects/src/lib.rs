@@ -1,5 +1,5 @@
 use rigsql_lexer::LexerConfig;
-use rigsql_parser::{AnsiGrammar, Parser, TsqlGrammar};
+use rigsql_parser::{AnsiGrammar, Parser, PostgresGrammar, TsqlGrammar};
 use strum::{Display, EnumString};
 
 /// Supported SQL dialects.
@@ -20,9 +20,8 @@ impl DialectKind {
     /// Create a parser configured for this dialect.
     pub fn parser(self) -> Parser {
         match self {
-            DialectKind::Ansi | DialectKind::Postgres => {
-                Parser::new(self.lexer_config(), Box::new(AnsiGrammar))
-            }
+            DialectKind::Ansi => Parser::new(self.lexer_config(), Box::new(AnsiGrammar)),
+            DialectKind::Postgres => Parser::new(self.lexer_config(), Box::new(PostgresGrammar)),
             DialectKind::Tsql => Parser::new(self.lexer_config(), Box::new(TsqlGrammar)),
         }
     }

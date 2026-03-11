@@ -1,7 +1,8 @@
 use rigsql_core::SegmentType;
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::{LintViolation, SourceEdit};
+use crate::utils::check_capitalisation;
+use crate::violation::LintViolation;
 
 /// CP05: Data type names must be consistently capitalised.
 ///
@@ -74,26 +75,20 @@ impl Rule for RuleCP05 {
                 continue;
             }
 
-            let expected = match self.policy {
-                DataTypeCapPolicy::Upper => text.to_ascii_uppercase(),
-                DataTypeCapPolicy::Lower => text.to_ascii_lowercase(),
+            let (expected, policy_name) = match self.policy {
+                DataTypeCapPolicy::Upper => (text.to_ascii_uppercase(), "upper"),
+                DataTypeCapPolicy::Lower => (text.to_ascii_lowercase(), "lower"),
             };
 
-            if text != expected {
-                violations.push(LintViolation::with_fix(
-                    self.code(),
-                    format!(
-                        "Data type must be {} case. Found '{}' instead of '{}'.",
-                        match self.policy {
-                            DataTypeCapPolicy::Upper => "upper",
-                            DataTypeCapPolicy::Lower => "lower",
-                        },
-                        text,
-                        expected
-                    ),
-                    token.span,
-                    vec![SourceEdit::replace(token.span, expected.clone())],
-                ));
+            if let Some(v) = check_capitalisation(
+                self.code(),
+                "Data type",
+                text,
+                &expected,
+                policy_name,
+                token.span,
+            ) {
+                violations.push(v);
             }
         }
 

@@ -3,9 +3,9 @@ use rigsql_lexer::{Lexer, LexerConfig, LexerError};
 use thiserror::Error;
 
 use crate::context::{ParseContext, ParseDiagnostic};
-#[cfg(test)]
-use crate::grammar::TsqlGrammar;
 use crate::grammar::{AnsiGrammar, Grammar};
+#[cfg(test)]
+use crate::grammar::{PostgresGrammar, TsqlGrammar};
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -577,5 +577,155 @@ mod tests {
         assert!(find_type(&cst, SegmentType::InsertStatement).is_some());
         assert!(find_type(&cst, SegmentType::DeleteStatement).is_some());
         assert_eq!(count_unparsable(&cst), 1);
+    }
+
+    // ── PostgreSQL tests ────────────────────────────────────────────
+
+    fn parse_pg(sql: &str) -> Segment {
+        Parser::new(LexerConfig::postgres(), Box::new(PostgresGrammar))
+            .parse(sql)
+            .unwrap()
+    }
+
+    #[test]
+    fn test_pg_double_colon_cast() {
+        let cst = parse_pg("SELECT col::int FROM t");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::TypeCastExpression).is_some());
+        assert_eq!(cst.raw(), "SELECT col::int FROM t");
+    }
+
+    #[test]
+    fn test_pg_chained_cast() {
+        let cst = parse_pg("SELECT '2024-01-01'::date::text FROM t");
+        assert_no_unparsable(&cst);
+        // Two nested TypeCastExpression
+        let mut count = 0;
+        cst.walk(&mut |s| {
+            if s.segment_type() == SegmentType::TypeCastExpression {
+                count += 1;
+            }
+        });
+        assert_eq!(
+            count, 2,
+            "Expected 2 TypeCastExpression nodes for chained cast"
+        );
+    }
+
+    #[test]
+    fn test_pg_cast_with_precision() {
+        let cst = parse_pg("SELECT col::numeric(10, 2) FROM t");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::TypeCastExpression).is_some());
+        assert!(find_type(&cst, SegmentType::DataType).is_some());
+    }
+
+    #[test]
+    fn test_pg_array_subscript() {
+        let cst = parse_pg("SELECT arr[1] FROM t");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::ArrayAccessExpression).is_some());
+    }
+
+    #[test]
+    fn test_pg_array_cast_chain() {
+        let cst = parse_pg("SELECT arr[1]::text FROM t");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::ArrayAccessExpression).is_some());
+        assert!(find_type(&cst, SegmentType::TypeCastExpression).is_some());
+    }
+
+    #[test]
+    fn test_pg_insert_returning() {
+        let cst = parse_pg("INSERT INTO users (name) VALUES ('Alice') RETURNING id, name");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::InsertStatement).is_some());
+        assert!(find_type(&cst, SegmentType::ReturningClause).is_some());
+    }
+
+    #[test]
+    fn test_pg_update_returning() {
+        let cst = parse_pg("UPDATE users SET name = 'Bob' WHERE id = 1 RETURNING *");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::UpdateStatement).is_some());
+        assert!(find_type(&cst, SegmentType::ReturningClause).is_some());
+    }
+
+    #[test]
+    fn test_pg_delete_returning() {
+        let cst = parse_pg("DELETE FROM users WHERE id = 1 RETURNING id");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::DeleteStatement).is_some());
+        assert!(find_type(&cst, SegmentType::ReturningClause).is_some());
+    }
+
+    #[test]
+    fn test_pg_on_conflict_do_nothing() {
+        let cst = parse_pg(
+            "INSERT INTO users (id, name) VALUES (1, 'Alice') ON CONFLICT (id) DO NOTHING",
+        );
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::OnConflictClause).is_some());
+    }
+
+    #[test]
+    fn test_pg_on_conflict_do_update() {
+        let cst = parse_pg(
+            "INSERT INTO users (id, name) VALUES (1, 'Alice') \
+             ON CONFLICT (id) DO UPDATE SET name = 'Alice'",
+        );
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::OnConflictClause).is_some());
+        assert!(find_type(&cst, SegmentType::SetClause).is_some());
+    }
+
+    #[test]
+    fn test_pg_upsert_returning() {
+        let cst = parse_pg(
+            "INSERT INTO users (id, name) VALUES (1, 'Alice') \
+             ON CONFLICT (id) DO UPDATE SET name = 'Alice' RETURNING *",
+        );
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::OnConflictClause).is_some());
+        assert!(find_type(&cst, SegmentType::ReturningClause).is_some());
+    }
+
+    #[test]
+    fn test_pg_distinct_on() {
+        let cst = parse_pg(
+            "SELECT DISTINCT ON (dept) name, salary FROM employees ORDER BY dept, salary DESC",
+        );
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::SelectClause).is_some());
+        assert!(find_type(&cst, SegmentType::OrderByClause).is_some());
+    }
+
+    #[test]
+    fn test_pg_dollar_quoted_string() {
+        let cst = parse_pg("SELECT $$hello world$$");
+        assert_no_unparsable(&cst);
+        assert_eq!(cst.raw(), "SELECT $$hello world$$");
+    }
+
+    #[test]
+    fn test_pg_ilike() {
+        let cst = parse_pg("SELECT * FROM users WHERE name ILIKE '%alice%'");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::LikeExpression).is_some());
+    }
+
+    #[test]
+    fn test_pg_roundtrip_complex() {
+        let sql = "INSERT INTO orders (user_id, total) \
+                   VALUES (1, 99.99) \
+                   ON CONFLICT (user_id) DO UPDATE SET total = orders.total + 99.99 \
+                   RETURNING id, total::numeric(10, 2)";
+        let cst = parse_pg(sql);
+        assert_eq!(
+            cst.raw(),
+            sql,
+            "CST roundtrip must preserve source text exactly"
+        );
+        assert_no_unparsable(&cst);
     }
 }
