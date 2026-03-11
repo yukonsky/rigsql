@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn test_lt10_flags_next_line() {
         let violations = lint_sql("SELECT\nDISTINCT a FROM t", RuleLT10);
-        assert!(violations.len() >= 1);
+        assert!(!violations.is_empty());
         assert!(violations.iter().all(|v| v.rule_code == "LT10"));
     }
 }

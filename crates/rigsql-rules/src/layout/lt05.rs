@@ -84,7 +84,7 @@ mod tests {
     fn test_lt05_flags_long_line() {
         let long_sql = format!("SELECT {} FROM t", "a, ".repeat(30));
         let violations = lint_sql(&long_sql, RuleLT05::default());
-        assert!(violations.len() >= 1);
+        assert!(!violations.is_empty());
         assert!(violations.iter().all(|v| v.rule_code == "LT05"));
     }
 

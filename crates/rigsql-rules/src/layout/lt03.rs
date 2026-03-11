@@ -79,7 +79,7 @@ mod tests {
     #[test]
     fn test_lt03_flags_missing_space() {
         let violations = lint_sql("SELECT * FROM t WHERE x=1", RuleLT03);
-        assert!(violations.len() >= 1);
+        assert!(!violations.is_empty());
         assert!(violations.iter().all(|v| v.rule_code == "LT03"));
     }
 

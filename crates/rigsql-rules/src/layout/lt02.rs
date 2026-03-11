@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn test_lt02_flags_odd_indent() {
         let violations = lint_sql("SELECT *\n   FROM t", RuleLT02::default());
-        assert!(violations.len() >= 1);
+        assert!(!violations.is_empty());
         assert!(violations.iter().all(|v| v.rule_code == "LT02"));
     }
 
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn test_lt02_flags_mixed_tabs_spaces() {
         let violations = lint_sql("SELECT *\n\t FROM t", RuleLT02::default());
-        assert!(violations.len() >= 1);
+        assert!(!violations.is_empty());
         assert!(violations.iter().all(|v| v.rule_code == "LT02"));
     }
 }

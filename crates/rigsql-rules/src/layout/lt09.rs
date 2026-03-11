@@ -77,7 +77,7 @@ mod tests {
     #[test]
     fn test_lt09_flags_multiple_targets_single_line() {
         let violations = lint_sql("SELECT a, b, c FROM t", RuleLT09);
-        assert!(violations.len() >= 1);
+        assert!(!violations.is_empty());
         assert!(violations.iter().all(|v| v.rule_code == "LT09"));
     }
 

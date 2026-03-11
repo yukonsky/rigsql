@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn test_lt04_flags_leading_comma() {
         let violations = lint_sql("SELECT a\n    ,b FROM t", RuleLT04::default());
-        assert!(violations.len() >= 1);
+        assert!(!violations.is_empty());
         assert!(violations.iter().all(|v| v.rule_code == "LT04"));
     }
 }

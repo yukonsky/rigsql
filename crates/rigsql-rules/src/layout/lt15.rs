@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn test_lt15_flags_distinct_with_paren() {
         let violations = lint_sql("SELECT DISTINCT(a) FROM t", RuleLT15);
-        assert!(violations.len() >= 1);
+        assert!(!violations.is_empty());
         assert!(violations.iter().all(|v| v.rule_code == "LT15"));
     }
 

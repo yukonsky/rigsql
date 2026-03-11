@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn test_lt01_flags_double_space() {
         let violations = lint_sql("SELECT  *  FROM t", RuleLT01);
-        assert!(violations.len() >= 1);
+        assert!(!violations.is_empty());
         assert!(violations.iter().all(|v| v.rule_code == "LT01"));
     }
 
