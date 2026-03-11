@@ -1,10 +1,21 @@
 use rigsql_core::{Token, TokenKind};
 
+/// A parse error recorded during error recovery.
+#[derive(Debug, Clone)]
+pub struct ParseDiagnostic {
+    /// Byte offset in the source where the error was detected.
+    pub offset: u32,
+    /// Human-readable description of what went wrong.
+    pub message: String,
+}
+
 /// Parser context: a cursor over the token stream.
 pub struct ParseContext<'a> {
     tokens: &'a [Token],
     pos: usize,
     source: &'a str,
+    /// Diagnostics collected during error-recovery passes.
+    diagnostics: Vec<ParseDiagnostic>,
 }
 
 impl<'a> ParseContext<'a> {
@@ -13,11 +24,37 @@ impl<'a> ParseContext<'a> {
             tokens,
             pos: 0,
             source,
+            diagnostics: Vec::new(),
         }
     }
 
     pub fn source(&self) -> &'a str {
         self.source
+    }
+
+    /// Record a parse error at the current position.
+    pub fn record_error(&mut self, message: &str) {
+        let offset = self
+            .peek()
+            .map(|t| t.span.start)
+            .unwrap_or_else(|| self.source.len() as u32);
+        self.diagnostics.push(ParseDiagnostic {
+            offset,
+            message: message.to_string(),
+        });
+    }
+
+    /// Record a parse error at a specific byte offset.
+    pub fn record_error_at(&mut self, offset: u32, message: &str) {
+        self.diagnostics.push(ParseDiagnostic {
+            offset,
+            message: message.to_string(),
+        });
+    }
+
+    /// Take collected diagnostics, leaving the internal list empty.
+    pub fn take_diagnostics(&mut self) -> Vec<ParseDiagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     /// Current position in the token stream.

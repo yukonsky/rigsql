@@ -67,12 +67,40 @@ pub trait Grammar: Send + Sync {
             if let Some(stmt) = self.parse_statement(ctx) {
                 children.push(stmt);
             } else {
-                // Consume unparsable token to avoid infinite loop
-                children.extend(eat_trivia_segments(ctx));
-                if !ctx.at_eof() {
-                    if let Some(token) = ctx.advance() {
-                        children.push(unparsable_token(token));
+                // Error recovery: skip to the next statement boundary
+                // (semicolon or a recognised statement keyword) and wrap
+                // all skipped tokens in a single Unparsable node.
+                let error_offset = ctx
+                    .peek()
+                    .map(|t| t.span.start)
+                    .unwrap_or(ctx.source().len() as u32);
+                let mut unparsable_children = Vec::new();
+                while !ctx.at_eof() {
+                    // Stop before a semicolon — consume it as part of the
+                    // unparsable node so the next iteration starts cleanly.
+                    if ctx.peek_kind() == Some(TokenKind::Semicolon) {
+                        if let Some(semi) = ctx.advance() {
+                            unparsable_children.push(token_segment(semi, SegmentType::Semicolon));
+                        }
+                        break;
                     }
+                    // Stop before a token that looks like it starts a new statement.
+                    if self.peek_statement_start(ctx) {
+                        break;
+                    }
+                    if let Some(token) = ctx.advance() {
+                        unparsable_children.push(any_token_segment(token));
+                    }
+                }
+                if !unparsable_children.is_empty() {
+                    children.push(Segment::Node(NodeSegment::new(
+                        SegmentType::Unparsable,
+                        unparsable_children,
+                    )));
+                    ctx.record_error_at(
+                        error_offset,
+                        "Unparsable segment: could not match any statement",
+                    );
                 }
             }
         }
