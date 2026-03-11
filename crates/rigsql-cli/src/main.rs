@@ -1,4 +1,5 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 use rayon::prelude::*;
 use rigsql_config::{filter_noqa, Config};
 use rigsql_core::Segment;
@@ -74,6 +75,12 @@ enum Commands {
 
     /// List available lint rules
     Rules,
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        shell: Shell,
+    },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -138,6 +145,10 @@ fn main() {
         }
 
         Commands::Rules => cmd_rules(),
+
+        Commands::Completions { shell } => {
+            clap_complete::generate(shell, &mut Cli::command(), "rigsql", &mut std::io::stdout());
+        }
     }
 }
 
