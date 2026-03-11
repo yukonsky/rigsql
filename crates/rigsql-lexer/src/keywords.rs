@@ -131,7 +131,14 @@ pub static RESERVED_KEYWORDS: &[&str] = &[
 ];
 
 /// Check if a word (case-insensitive) is a reserved keyword.
+/// Uses zero-allocation binary search with byte-level comparison.
 pub fn is_keyword(word: &str) -> bool {
-    let upper = word.to_ascii_uppercase();
-    RESERVED_KEYWORDS.binary_search(&upper.as_str()).is_ok()
+    RESERVED_KEYWORDS
+        .binary_search_by(|kw| {
+            kw.as_bytes()
+                .iter()
+                .copied()
+                .cmp(word.as_bytes().iter().map(|b| b.to_ascii_uppercase()))
+        })
+        .is_ok()
 }

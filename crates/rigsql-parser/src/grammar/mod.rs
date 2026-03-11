@@ -2125,17 +2125,24 @@ const CLAUSE_KEYWORDS: &[&str] = &[
     "WITH",
 ];
 
-pub fn is_clause_keyword(word: &str) -> bool {
-    CLAUSE_KEYWORDS
-        .iter()
-        .any(|kw| word.eq_ignore_ascii_case(kw))
+/// Case-insensitive binary search on a sorted uppercase keyword list.
+/// Zero allocations — compares byte-by-byte.
+fn binary_search_keyword(list: &[&str], word: &str) -> bool {
+    list.binary_search_by(|kw| {
+        kw.as_bytes()
+            .iter()
+            .copied()
+            .cmp(word.as_bytes().iter().map(|b| b.to_ascii_uppercase()))
+    })
+    .is_ok()
 }
 
+pub fn is_clause_keyword(word: &str) -> bool {
+    binary_search_keyword(CLAUSE_KEYWORDS, word)
+}
+
+const JOIN_KEYWORDS: &[&str] = &["CROSS", "FULL", "INNER", "JOIN", "LEFT", "RIGHT"];
+
 pub fn is_join_keyword(word: &str) -> bool {
-    word.eq_ignore_ascii_case("JOIN")
-        || word.eq_ignore_ascii_case("INNER")
-        || word.eq_ignore_ascii_case("LEFT")
-        || word.eq_ignore_ascii_case("RIGHT")
-        || word.eq_ignore_ascii_case("FULL")
-        || word.eq_ignore_ascii_case("CROSS")
+    binary_search_keyword(JOIN_KEYWORDS, word) || word.eq_ignore_ascii_case("CROSS")
 }

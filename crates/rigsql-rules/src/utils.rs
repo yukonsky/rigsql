@@ -1,4 +1,6 @@
-use rigsql_core::{Segment, SegmentType};
+use rigsql_core::{Segment, SegmentType, Span};
+
+use crate::violation::{LintViolation, SourceEdit};
 
 /// Check if an AliasExpression's children contain an explicit AS keyword.
 pub fn has_as_keyword(children: &[Segment]) -> bool {
@@ -105,6 +107,39 @@ pub fn is_false_alias(children: &[Segment]) -> bool {
         return NOT_ALIAS_KEYWORDS.binary_search(&upper.as_str()).is_ok();
     }
     false
+}
+
+/// Generate a fix that inserts "AS " before the last non-trivia child (the alias name).
+/// Used by AL01 and AL02.
+pub fn insert_as_keyword_fix(children: &[Segment]) -> Vec<SourceEdit> {
+    last_non_trivia(children)
+        .map(|alias| vec![SourceEdit::insert(alias.span().start, "AS ")])
+        .unwrap_or_default()
+}
+
+/// Check capitalisation of a token and return a violation if it doesn't match.
+/// Shared by CP01, CP04, CP05 to avoid duplicating violation creation.
+pub fn check_capitalisation(
+    rule_code: &'static str,
+    category: &str,
+    text: &str,
+    expected: &str,
+    policy_name: &str,
+    span: Span,
+) -> Option<LintViolation> {
+    if text != expected {
+        Some(LintViolation::with_fix(
+            rule_code,
+            format!(
+                "{} must be {} case. Found '{}' instead of '{}'.",
+                category, policy_name, text, expected
+            ),
+            span,
+            vec![SourceEdit::replace(span, expected.to_string())],
+        ))
+    } else {
+        None
+    }
 }
 
 /// Extract the alias name from an AliasExpression.

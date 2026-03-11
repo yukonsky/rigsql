@@ -1,7 +1,8 @@
 use rigsql_core::{Segment, SegmentType, TokenKind};
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::{LintViolation, SourceEdit};
+use crate::utils::check_capitalisation;
+use crate::violation::LintViolation;
 
 /// CP04: Boolean/Null literals must be consistently capitalised.
 ///
@@ -45,18 +46,15 @@ impl Rule for RuleCP04 {
         let text = t.token.text.as_str();
         let expected = text.to_ascii_uppercase();
 
-        if text != expected {
-            vec![LintViolation::with_fix(
-                self.code(),
-                format!(
-                    "Boolean/Null literals must be upper case. Found '{}' instead of '{}'.",
-                    text, expected
-                ),
-                t.token.span,
-                vec![SourceEdit::replace(t.token.span, expected.clone())],
-            )]
-        } else {
-            vec![]
-        }
+        check_capitalisation(
+            self.code(),
+            "Boolean/Null literals",
+            text,
+            &expected,
+            "upper",
+            t.token.span,
+        )
+        .into_iter()
+        .collect()
     }
 }

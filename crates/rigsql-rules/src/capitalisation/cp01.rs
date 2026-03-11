@@ -2,7 +2,8 @@ use rigsql_core::{Segment, SegmentType, TokenKind};
 use rigsql_lexer::is_keyword;
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::{LintViolation, SourceEdit};
+use crate::utils::check_capitalisation;
+use crate::violation::LintViolation;
 
 /// CP01: Keywords must be consistently capitalised.
 ///
@@ -67,39 +68,27 @@ impl Rule for RuleCP01 {
         let Segment::Token(t) = ctx.segment else {
             return vec![];
         };
-        if t.token.kind != TokenKind::Word {
-            return vec![];
-        }
-        if !is_keyword(&t.token.text) {
+        if t.token.kind != TokenKind::Word || !is_keyword(&t.token.text) {
             return vec![];
         }
 
         let text = t.token.text.as_str();
-        let expected = match self.policy {
-            CapitalisationPolicy::Upper => text.to_ascii_uppercase(),
-            CapitalisationPolicy::Lower => text.to_ascii_lowercase(),
-            CapitalisationPolicy::Capitalise => capitalise(text),
+        let (expected, policy_name) = match self.policy {
+            CapitalisationPolicy::Upper => (text.to_ascii_uppercase(), "upper"),
+            CapitalisationPolicy::Lower => (text.to_ascii_lowercase(), "lower"),
+            CapitalisationPolicy::Capitalise => (capitalise(text), "capitalised"),
         };
 
-        if text != expected {
-            vec![LintViolation::with_fix(
-                self.code(),
-                format!(
-                    "Keywords must be {} case. Found '{}' instead of '{}'.",
-                    match self.policy {
-                        CapitalisationPolicy::Upper => "upper",
-                        CapitalisationPolicy::Lower => "lower",
-                        CapitalisationPolicy::Capitalise => "capitalised",
-                    },
-                    text,
-                    expected
-                ),
-                t.token.span,
-                vec![SourceEdit::replace(t.token.span, expected.clone())],
-            )]
-        } else {
-            vec![]
-        }
+        check_capitalisation(
+            self.code(),
+            "Keywords",
+            text,
+            &expected,
+            policy_name,
+            t.token.span,
+        )
+        .into_iter()
+        .collect()
     }
 }
 

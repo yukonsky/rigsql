@@ -41,6 +41,23 @@ pub struct RuleContext<'a> {
     pub dialect: &'a str,
 }
 
+impl<'a> RuleContext<'a> {
+    /// Get the next non-trivia sibling after the current segment.
+    pub fn next_non_trivia_sibling(&self) -> Option<&'a Segment> {
+        self.siblings[self.index_in_parent + 1..]
+            .iter()
+            .find(|s| !s.segment_type().is_trivia())
+    }
+
+    /// Get the previous non-trivia sibling before the current segment.
+    pub fn prev_non_trivia_sibling(&self) -> Option<&'a Segment> {
+        self.siblings[..self.index_in_parent]
+            .iter()
+            .rev()
+            .find(|s| !s.segment_type().is_trivia())
+    }
+}
+
 /// Trait that all lint rules must implement.
 pub trait Rule: Send + Sync {
     /// Rule code, e.g. "LT01".
@@ -96,17 +113,14 @@ pub fn lint(
                 violations.extend(rule.eval(&ctx));
             }
             CrawlType::Segment(ref types) => {
-                walk_and_lint_indexed(
-                    root,
-                    0,
-                    None,
+                let walker = LintWalker {
                     root,
                     source,
                     dialect,
-                    rule.as_ref(),
+                    rule: rule.as_ref(),
                     types,
-                    &mut violations,
-                );
+                };
+                walker.walk(root, 0, None, &mut violations);
             }
         }
     }
@@ -115,48 +129,43 @@ pub fn lint(
     violations
 }
 
-#[allow(clippy::too_many_arguments)]
-fn walk_and_lint_indexed(
-    segment: &Segment,
-    index_in_parent: usize,
-    parent: Option<&Segment>,
-    root: &Segment,
-    source: &str,
-    dialect: &str,
-    rule: &dyn Rule,
-    types: &[SegmentType],
-    violations: &mut Vec<LintViolation>,
-) {
-    if types.contains(&segment.segment_type()) {
-        let siblings = parent
-            .map(|p| p.children())
-            .unwrap_or(std::slice::from_ref(segment));
+/// Walks the CST and evaluates a rule at matching segments.
+struct LintWalker<'a> {
+    root: &'a Segment,
+    source: &'a str,
+    dialect: &'a str,
+    rule: &'a dyn Rule,
+    types: &'a [SegmentType],
+}
 
-        let ctx = RuleContext {
-            segment,
-            parent,
-            root,
-            siblings,
-            index_in_parent,
-            source,
-            dialect,
-        };
-        violations.extend(rule.eval(&ctx));
-    }
+impl<'a> LintWalker<'a> {
+    fn walk(
+        &self,
+        segment: &'a Segment,
+        index_in_parent: usize,
+        parent: Option<&'a Segment>,
+        violations: &mut Vec<LintViolation>,
+    ) {
+        if self.types.contains(&segment.segment_type()) {
+            let siblings = parent
+                .map(|p| p.children())
+                .unwrap_or(std::slice::from_ref(segment));
 
-    let children = segment.children();
-    for (i, child) in children.iter().enumerate() {
-        walk_and_lint_indexed(
-            child,
-            i,
-            Some(segment),
-            root,
-            source,
-            dialect,
-            rule,
-            types,
-            violations,
-        );
+            let ctx = RuleContext {
+                segment,
+                parent,
+                root: self.root,
+                siblings,
+                index_in_parent,
+                source: self.source,
+                dialect: self.dialect,
+            };
+            violations.extend(self.rule.eval(&ctx));
+        }
+
+        for (i, child) in segment.children().iter().enumerate() {
+            self.walk(child, i, Some(segment), violations);
+        }
     }
 }
 
