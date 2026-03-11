@@ -1,0 +1,39 @@
+name: "rigsql SQL Linter"
+description: "Fast SQL linter with sqlfluff-compatible rules, written in Rust"
+branding:
+  icon: "check-circle"
+  color: "blue"
+
+inputs:
+  paths:
+    description: "Files or directories to lint (space-separated)"
+    required: false
+    default: "."
+  dialect:
+    description: "SQL dialect (ansi, postgres, tsql)"
+    required: false
+    default: "ansi"
+  format:
+    description: "Output format (human, json, sarif, github)"
+    required: false
+    default: "github"
+  version:
+    description: "rigsql version to install (e.g. 0.2.0, or 'latest')"
+    required: false
+    default: "latest"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install rigsql
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          cargo install rigsql-cli
+        else
+          cargo install rigsql-cli --version "${{ inputs.version }}"
+        fi
+
+    - name: Run rigsql lint
+      shell: bash
+      run: rigsql lint ${{ inputs.paths }} --dialect ${{ inputs.dialect }} --format ${{ inputs.format }}
