@@ -1,8 +1,5 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process;
-
 use clap::{Parser, Subcommand, ValueEnum};
+use rayon::prelude::*;
 use rigsql_config::{filter_noqa, Config};
 use rigsql_core::Segment;
 use rigsql_dialects::DialectKind;
@@ -12,6 +9,9 @@ use rigsql_rules::{
     rule::{apply_fixes, lint},
     Rule,
 };
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process;
 
 #[derive(Parser)]
 #[command(name = "rigsql", version, about = "Fast SQL linter written in Rust")]
@@ -99,7 +99,7 @@ enum ParseFormat {
     Json,
 }
 
-#[derive(Clone, ValueEnum)]
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum LintFormat {
     Human,
     Json,
@@ -190,86 +190,13 @@ fn build_rules(files: &[String]) -> Vec<Box<dyn Rule>> {
     rules
 }
 
-fn cmd_fix(files: &[String], dialect: DialectKind, dry_run: bool, _force: bool) -> i32 {
-    let sql_files = collect_sql_files(files);
-    if sql_files.is_empty() {
-        eprintln!("No SQL files found.");
-        return 2;
-    }
-
-    let all_rules = build_rules(files);
-    let parser = dialect.parser();
-    let dialect_str = dialect.as_str();
-    let mut fixed_count = 0;
-    let mut file_count = 0;
-
-    for path in &sql_files {
-        let source = match fs::read_to_string(path) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Error reading {}: {}", path.display(), e);
-                continue;
-            }
-        };
-
-        // Iterative fix loop: parse → lint → fix → repeat until stable (max 10 rounds)
-        let mut current = source.clone();
-        let mut rounds = 0;
-        let max_rounds = 10;
-
-        while let Ok(cst) = parser.parse(&current) {
-            let mut violations = lint(&cst, &current, &all_rules, dialect_str);
-            filter_noqa(&current, &mut violations);
-
-            // Only keep fixable violations (those with edits)
-            let fixable: Vec<_> = violations
-                .into_iter()
-                .filter(|v| !v.fixes.is_empty())
-                .collect();
-            if fixable.is_empty() {
-                break;
-            }
-
-            let new_source = apply_fixes(&current, &fixable);
-            if new_source == current {
-                break; // No progress
-            }
-
-            fixed_count += fixable.len();
-            current = new_source;
-            rounds += 1;
-            if rounds >= max_rounds {
-                break;
-            }
-        }
-
-        if current != source {
-            file_count += 1;
-            if dry_run {
-                println!("Would fix: {}", path.display());
-            } else {
-                if let Err(e) = fs::write(path, &current) {
-                    eprintln!("Error writing {}: {}", path.display(), e);
-                } else {
-                    println!("Fixed: {}", path.display());
-                }
-            }
-        }
-    }
-
-    if file_count == 0 {
-        eprintln!("No fixable violations found.");
-    } else {
-        eprintln!(
-            "{} {} in {} file{}.",
-            if dry_run { "Would apply" } else { "Applied" },
-            fixed_count,
-            file_count,
-            if file_count == 1 { "" } else { "s" },
-        );
-    }
-
-    0
+/// Per-file lint result for aggregation after parallel processing.
+struct FileLintResult {
+    path: PathBuf,
+    source: String,
+    violations: Vec<rigsql_rules::LintViolation>,
+    /// Pre-formatted output for human format (avoids post-processing).
+    human_output: Option<String>,
 }
 
 fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color: bool) -> i32 {
@@ -280,65 +207,78 @@ fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color
     }
 
     let rules = build_rules(files);
-
-    let parser = dialect.parser();
     let dialect_str = dialect.as_str();
     let formatter = HumanFormatter::new(!no_color);
 
+    // Parallel lint: each file is parsed + linted independently
+    let results: Vec<FileLintResult> = sql_files
+        .par_iter()
+        .filter_map(|path| {
+            let source = match fs::read_to_string(path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Error reading {}: {}", path.display(), e);
+                    return None;
+                }
+            };
+
+            let parser = dialect.parser();
+            let cst = match parser.parse(&source) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Parse error in {}: {}", path.display(), e);
+                    return None;
+                }
+            };
+
+            let mut violations = lint(&cst, &source, &rules, dialect_str);
+            filter_noqa(&source, &mut violations);
+
+            let human_output = if format == LintFormat::Human {
+                let out = formatter.format_file(path, &source, &violations);
+                Some(out)
+            } else {
+                None
+            };
+
+            Some(FileLintResult {
+                path: path.clone(),
+                source,
+                violations,
+                human_output,
+            })
+        })
+        .collect();
+
+    // Aggregate results (sequential, for deterministic output order)
+    let file_count = sql_files.len();
     let mut total_violations = 0;
     let mut files_with_violations = 0;
-    let mut json_results: Vec<(PathBuf, String, Vec<rigsql_rules::LintViolation>)> = Vec::new();
 
-    for path in &sql_files {
-        let source = match fs::read_to_string(path) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Error reading {}: {}", path.display(), e);
-                continue;
-            }
-        };
-
-        let cst = match parser.parse(&source) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("Parse error in {}: {}", path.display(), e);
-                continue;
-            }
-        };
-
-        let mut violations = lint(&cst, &source, &rules, dialect_str);
-
-        // Apply noqa filtering
-        filter_noqa(&source, &mut violations);
-
-        if !violations.is_empty() {
+    for r in &results {
+        if !r.violations.is_empty() {
             files_with_violations += 1;
-            total_violations += violations.len();
-        }
-
-        match format {
-            LintFormat::Human => {
-                let output = formatter.format_file(path, &source, &violations);
-                if !output.is_empty() {
-                    print!("{output}");
-                }
-            }
-            LintFormat::Json | LintFormat::Sarif | LintFormat::Github => {
-                json_results.push((path.clone(), source, violations));
-            }
+            total_violations += r.violations.len();
         }
     }
 
     match format {
         LintFormat::Human => {
+            for r in &results {
+                if let Some(out) = &r.human_output {
+                    if !out.is_empty() {
+                        print!("{out}");
+                    }
+                }
+            }
             let summary =
-                formatter.format_summary(sql_files.len(), files_with_violations, total_violations);
+                formatter.format_summary(file_count, files_with_violations, total_violations);
             print!("{summary}");
         }
         LintFormat::Json | LintFormat::Sarif | LintFormat::Github => {
-            let refs: Vec<(&Path, &str, &[rigsql_rules::LintViolation])> = json_results
+            let refs: Vec<(&Path, &str, &[rigsql_rules::LintViolation])> = results
                 .iter()
-                .map(|(p, s, v)| (p.as_path(), s.as_str(), v.as_slice()))
+                .map(|r| (r.path.as_path(), r.source.as_str(), r.violations.as_slice()))
                 .collect();
             match format {
                 LintFormat::Json => {
@@ -368,6 +308,107 @@ fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color
     }
 }
 
+/// Per-file fix result.
+struct FileFixResult {
+    path: PathBuf,
+    fixed: String,
+    fix_count: usize,
+}
+
+fn cmd_fix(files: &[String], dialect: DialectKind, dry_run: bool, _force: bool) -> i32 {
+    let sql_files = collect_sql_files(files);
+    if sql_files.is_empty() {
+        eprintln!("No SQL files found.");
+        return 2;
+    }
+
+    let all_rules = build_rules(files);
+    let dialect_str = dialect.as_str();
+
+    // Parallel fix: each file runs its own iterative fix loop
+    let results: Vec<FileFixResult> = sql_files
+        .par_iter()
+        .filter_map(|path| {
+            let source = match fs::read_to_string(path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Error reading {}: {}", path.display(), e);
+                    return None;
+                }
+            };
+
+            let parser = dialect.parser();
+            let mut current = source;
+            let mut total_fixed = 0;
+            let max_rounds = 10;
+
+            for _ in 0..max_rounds {
+                let cst = match parser.parse(&current) {
+                    Ok(c) => c,
+                    Err(_) => break,
+                };
+
+                let mut violations = lint(&cst, &current, &all_rules, dialect_str);
+                filter_noqa(&current, &mut violations);
+
+                let fixable: Vec<_> = violations
+                    .into_iter()
+                    .filter(|v| !v.fixes.is_empty())
+                    .collect();
+                if fixable.is_empty() {
+                    break;
+                }
+
+                let new_source = apply_fixes(&current, &fixable);
+                if new_source == current {
+                    break;
+                }
+
+                total_fixed += fixable.len();
+                current = new_source;
+            }
+
+            if total_fixed == 0 {
+                return None;
+            }
+
+            Some(FileFixResult {
+                path: path.clone(),
+                fixed: current,
+                fix_count: total_fixed,
+            })
+        })
+        .collect();
+
+    let file_count = results.len();
+    let mut total_fixed = 0;
+
+    for r in &results {
+        total_fixed += r.fix_count;
+        if dry_run {
+            println!("Would fix: {}", r.path.display());
+        } else if let Err(e) = fs::write(&r.path, &r.fixed) {
+            eprintln!("Error writing {}: {}", r.path.display(), e);
+        } else {
+            println!("Fixed: {}", r.path.display());
+        }
+    }
+
+    if file_count == 0 {
+        eprintln!("No fixable violations found.");
+    } else {
+        eprintln!(
+            "{} {} in {} file{}.",
+            if dry_run { "Would apply" } else { "Applied" },
+            total_fixed,
+            file_count,
+            if file_count == 1 { "" } else { "s" },
+        );
+    }
+
+    0
+}
+
 fn cmd_rules() {
     let rules = default_rules();
     println!("{:<6} {:<30} Description", "Code", "Name");
@@ -389,24 +430,20 @@ fn collect_sql_files(paths: &[String]) -> Vec<PathBuf> {
         if path.is_file() {
             files.push(path);
         } else if path.is_dir() {
-            walk_dir_recursive(&path, &mut files);
+            let walker = ignore::WalkBuilder::new(&path)
+                .hidden(true) // skip hidden files
+                .git_ignore(true) // respect .gitignore
+                .build();
+            for entry in walker.flatten() {
+                let p = entry.path().to_path_buf();
+                if p.is_file() && p.extension().is_some_and(|ext| ext == "sql") {
+                    files.push(p);
+                }
+            }
         }
     }
     files.sort();
     files
-}
-
-fn walk_dir_recursive(dir: &Path, files: &mut Vec<PathBuf>) {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p.is_dir() {
-                walk_dir_recursive(&p, files);
-            } else if p.is_file() && p.extension().is_some_and(|ext| ext == "sql") {
-                files.push(p);
-            }
-        }
-    }
 }
 
 fn read_file_or_stdin(file: &str) -> String {
