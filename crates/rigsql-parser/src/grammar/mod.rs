@@ -235,21 +235,7 @@ pub trait Grammar: Send + Sync {
         }
 
         // Select targets (comma-separated expressions)
-        if let Some(expr) = self.parse_select_target(ctx) {
-            children.push(expr);
-        }
-        loop {
-            children.extend(eat_trivia_segments(ctx));
-            if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
-                children.push(token_segment(comma, SegmentType::Comma));
-                children.extend(eat_trivia_segments(ctx));
-                if let Some(expr) = self.parse_select_target(ctx) {
-                    children.push(expr);
-                }
-            } else {
-                break;
-            }
-        }
+        parse_comma_separated(ctx, &mut children, |c| self.parse_select_target(c));
 
         Some(Segment::Node(NodeSegment::new(
             SegmentType::SelectClause,
@@ -307,24 +293,7 @@ pub trait Grammar: Send + Sync {
         children.extend(eat_trivia_segments(ctx));
 
         // Table references (comma-separated)
-        if let Some(tref) = self.parse_table_reference(ctx) {
-            children.push(tref);
-        }
-        loop {
-            let save = ctx.save();
-            let trivia = eat_trivia_segments(ctx);
-            if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
-                children.extend(trivia);
-                children.push(token_segment(comma, SegmentType::Comma));
-                children.extend(eat_trivia_segments(ctx));
-                if let Some(tref) = self.parse_table_reference(ctx) {
-                    children.push(tref);
-                }
-            } else {
-                ctx.restore(save);
-                break;
-            }
-        }
+        parse_comma_separated(ctx, &mut children, |c| self.parse_table_reference(c));
 
         // JOIN clauses
         loop {
@@ -447,24 +416,7 @@ pub trait Grammar: Send + Sync {
         children.extend(eat_trivia_segments(ctx));
 
         // Comma-separated expressions
-        if let Some(expr) = self.parse_expression(ctx) {
-            children.push(expr);
-        }
-        loop {
-            let save = ctx.save();
-            let trivia = eat_trivia_segments(ctx);
-            if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
-                children.extend(trivia);
-                children.push(token_segment(comma, SegmentType::Comma));
-                children.extend(eat_trivia_segments(ctx));
-                if let Some(expr) = self.parse_expression(ctx) {
-                    children.push(expr);
-                }
-            } else {
-                ctx.restore(save);
-                break;
-            }
-        }
+        parse_comma_separated(ctx, &mut children, |c| self.parse_expression(c));
 
         Some(Segment::Node(NodeSegment::new(
             SegmentType::GroupByClause,
@@ -496,24 +448,7 @@ pub trait Grammar: Send + Sync {
         children.extend(eat_trivia_segments(ctx));
 
         // Comma-separated order expressions
-        if let Some(expr) = self.parse_order_expression(ctx) {
-            children.push(expr);
-        }
-        loop {
-            let save = ctx.save();
-            let trivia = eat_trivia_segments(ctx);
-            if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
-                children.extend(trivia);
-                children.push(token_segment(comma, SegmentType::Comma));
-                children.extend(eat_trivia_segments(ctx));
-                if let Some(expr) = self.parse_order_expression(ctx) {
-                    children.push(expr);
-                }
-            } else {
-                ctx.restore(save);
-                break;
-            }
-        }
+        parse_comma_separated(ctx, &mut children, |c| self.parse_order_expression(c));
 
         Some(Segment::Node(NodeSegment::new(
             SegmentType::OrderByClause,
@@ -600,24 +535,7 @@ pub trait Grammar: Send + Sync {
         }
 
         // CTE definitions (comma-separated)
-        if let Some(cte) = self.parse_cte_definition(ctx) {
-            children.push(cte);
-        }
-        loop {
-            let save = ctx.save();
-            let trivia = eat_trivia_segments(ctx);
-            if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
-                children.extend(trivia);
-                children.push(token_segment(comma, SegmentType::Comma));
-                children.extend(eat_trivia_segments(ctx));
-                if let Some(cte) = self.parse_cte_definition(ctx) {
-                    children.push(cte);
-                }
-            } else {
-                ctx.restore(save);
-                break;
-            }
-        }
+        parse_comma_separated(ctx, &mut children, |c| self.parse_cte_definition(c));
 
         Some(Segment::Node(NodeSegment::new(
             SegmentType::WithClause,
@@ -633,7 +551,7 @@ pub trait Grammar: Send + Sync {
 
         // Optional column list
         if ctx.peek_kind() == Some(TokenKind::LParen) {
-            if let Some(cols) = self.parse_paren_list(ctx) {
+            if let Some(cols) = self.parse_paren_block(ctx) {
                 children.push(cols);
                 children.extend(eat_trivia_segments(ctx));
             }
@@ -730,7 +648,7 @@ pub trait Grammar: Send + Sync {
             let kw = ctx.advance().unwrap();
             let mut using_children = vec![token_segment(kw, SegmentType::Keyword)];
             using_children.extend(eat_trivia_segments(ctx));
-            if let Some(paren) = self.parse_paren_list(ctx) {
+            if let Some(paren) = self.parse_paren_block(ctx) {
                 using_children.push(paren);
             }
             children.push(Segment::Node(NodeSegment::new(
@@ -765,7 +683,7 @@ pub trait Grammar: Send + Sync {
 
         // Optional column list
         if ctx.peek_kind() == Some(TokenKind::LParen) {
-            if let Some(cols) = self.parse_paren_list(ctx) {
+            if let Some(cols) = self.parse_paren_block(ctx) {
                 children.push(cols);
                 children.extend(eat_trivia_segments(ctx));
             }
@@ -795,24 +713,7 @@ pub trait Grammar: Send + Sync {
         children.extend(eat_trivia_segments(ctx));
 
         // Comma-separated (expr, expr, ...)
-        if let Some(row) = self.parse_paren_list(ctx) {
-            children.push(row);
-        }
-        loop {
-            let save = ctx.save();
-            let trivia = eat_trivia_segments(ctx);
-            if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
-                children.extend(trivia);
-                children.push(token_segment(comma, SegmentType::Comma));
-                children.extend(eat_trivia_segments(ctx));
-                if let Some(row) = self.parse_paren_list(ctx) {
-                    children.push(row);
-                }
-            } else {
-                ctx.restore(save);
-                break;
-            }
-        }
+        parse_comma_separated(ctx, &mut children, |c| self.parse_paren_block(c));
 
         Some(Segment::Node(NodeSegment::new(
             SegmentType::ValuesClause,
@@ -862,24 +763,7 @@ pub trait Grammar: Send + Sync {
         children.extend(eat_trivia_segments(ctx));
 
         // col = expr, ...
-        if let Some(assign) = self.parse_expression(ctx) {
-            children.push(assign);
-        }
-        loop {
-            let save = ctx.save();
-            let trivia = eat_trivia_segments(ctx);
-            if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
-                children.extend(trivia);
-                children.push(token_segment(comma, SegmentType::Comma));
-                children.extend(eat_trivia_segments(ctx));
-                if let Some(assign) = self.parse_expression(ctx) {
-                    children.push(assign);
-                }
-            } else {
-                ctx.restore(save);
-                break;
-            }
-        }
+        parse_comma_separated(ctx, &mut children, |c| self.parse_expression(c));
 
         Some(Segment::Node(NodeSegment::new(
             SegmentType::SetClause,
@@ -1794,24 +1678,7 @@ pub trait Grammar: Send + Sync {
         children.extend(eat_trivia_segments(ctx));
 
         // Comma-separated expressions
-        if let Some(expr) = self.parse_expression(ctx) {
-            children.push(expr);
-        }
-        loop {
-            let save = ctx.save();
-            let trivia = eat_trivia_segments(ctx);
-            if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
-                children.extend(trivia);
-                children.push(token_segment(comma, SegmentType::Comma));
-                children.extend(eat_trivia_segments(ctx));
-                if let Some(expr) = self.parse_expression(ctx) {
-                    children.push(expr);
-                }
-            } else {
-                ctx.restore(save);
-                break;
-            }
-        }
+        parse_comma_separated(ctx, &mut children, |c| self.parse_expression(c));
 
         Some(Segment::Node(NodeSegment::new(
             SegmentType::PartitionByClause,
@@ -1894,16 +1761,32 @@ pub trait Grammar: Send + Sync {
     }
 
     /// Consume tokens until semicolon, EOF, or start of new statement.
+    /// Consume tokens until semicolon, EOF, or start of a new statement.
+    /// Tracks paren depth so that keywords inside subqueries (e.g. `SELECT`
+    /// within `(SELECT ...)`) do not cause premature termination.
     fn consume_until_statement_end(&self, ctx: &mut ParseContext, children: &mut Vec<Segment>) {
+        let mut paren_depth = 0u32;
         while !ctx.at_eof() {
-            if ctx.peek_kind() == Some(TokenKind::Semicolon) {
-                break;
+            match ctx.peek_kind() {
+                Some(TokenKind::Semicolon) if paren_depth == 0 => break,
+                Some(TokenKind::LParen) => {
+                    paren_depth += 1;
+                    let token = ctx.advance().unwrap();
+                    children.push(any_token_segment(token));
+                }
+                Some(TokenKind::RParen) => {
+                    paren_depth = paren_depth.saturating_sub(1);
+                    let token = ctx.advance().unwrap();
+                    children.push(any_token_segment(token));
+                }
+                _ => {
+                    if paren_depth == 0 && self.peek_statement_start(ctx) {
+                        break;
+                    }
+                    let token = ctx.advance().unwrap();
+                    children.push(any_token_segment(token));
+                }
             }
-            if self.peek_statement_start(ctx) {
-                break;
-            }
-            let token = ctx.advance().unwrap();
-            children.push(any_token_segment(token));
         }
     }
 
@@ -1945,18 +1828,17 @@ pub trait Grammar: Send + Sync {
         )))
     }
 
-    /// Parse parenthesized comma-separated list of identifiers/expressions.
-    fn parse_paren_list(&self, ctx: &mut ParseContext) -> Option<Segment> {
-        self.parse_paren_block(ctx)
-    }
-
+    /// Consume tokens until the end of a statement.
+    ///
+    /// The ANSI default tracks paren and CASE/END depth, stopping at
+    /// semicolons or EOF.  TSQL overrides this to additionally track
+    /// BEGIN/END blocks and the GO batch separator.
     fn consume_until_end(&self, ctx: &mut ParseContext, children: &mut Vec<Segment>) {
         let mut paren_depth = 0u32;
-        let mut begin_depth = 0u32;
         let mut case_depth = 0u32;
         while !ctx.at_eof() {
             match ctx.peek_kind() {
-                Some(TokenKind::Semicolon) if paren_depth == 0 && begin_depth == 0 => break,
+                Some(TokenKind::Semicolon) if paren_depth == 0 => break,
                 Some(TokenKind::LParen) => {
                     paren_depth += 1;
                     let token = ctx.advance().unwrap();
@@ -1968,40 +1850,12 @@ pub trait Grammar: Send + Sync {
                     children.push(any_token_segment(token));
                 }
                 _ => {
-                    // Check the CURRENT token directly (not peek_keyword which skips trivia).
                     let t = ctx.peek().unwrap();
                     if t.kind == TokenKind::Word {
-                        if t.text.eq_ignore_ascii_case("BEGIN") {
-                            begin_depth += 1;
-                            let token = ctx.advance().unwrap();
-                            children.push(any_token_segment(token));
-                            continue;
-                        } else if t.text.eq_ignore_ascii_case("CASE") {
+                        if t.text.eq_ignore_ascii_case("CASE") {
                             case_depth += 1;
-                            let token = ctx.advance().unwrap();
-                            children.push(any_token_segment(token));
-                            continue;
-                        } else if t.text.eq_ignore_ascii_case("END") {
-                            if case_depth > 0 {
-                                case_depth -= 1;
-                                let token = ctx.advance().unwrap();
-                                children.push(any_token_segment(token));
-                                continue;
-                            }
-                            if begin_depth > 0 {
-                                begin_depth -= 1;
-                                let token = ctx.advance().unwrap();
-                                children.push(any_token_segment(token));
-                                if begin_depth == 0 && paren_depth == 0 {
-                                    break;
-                                }
-                                continue;
-                            }
-                        } else if t.text.eq_ignore_ascii_case("GO")
-                            && paren_depth == 0
-                            && begin_depth == 0
-                        {
-                            break;
+                        } else if t.text.eq_ignore_ascii_case("END") && case_depth > 0 {
+                            case_depth -= 1;
                         }
                     }
                     let token = ctx.advance().unwrap();
@@ -2077,6 +1931,35 @@ pub fn parse_statement_list(
                     children.push(unparsable_token(token));
                 }
             }
+        }
+    }
+}
+
+/// Parse a comma-separated list of items, appending them to `children`.
+///
+/// Parses the first item, then loops: save → eat trivia → comma? → parse next.
+/// If no comma is found, restores to before the trivia and returns.
+pub fn parse_comma_separated(
+    ctx: &mut ParseContext,
+    children: &mut Vec<Segment>,
+    mut parse_one: impl FnMut(&mut ParseContext) -> Option<Segment>,
+) {
+    if let Some(item) = parse_one(ctx) {
+        children.push(item);
+    }
+    loop {
+        let save = ctx.save();
+        let trivia = eat_trivia_segments(ctx);
+        if let Some(comma) = ctx.eat_kind(TokenKind::Comma) {
+            children.extend(trivia);
+            children.push(token_segment(comma, SegmentType::Comma));
+            children.extend(eat_trivia_segments(ctx));
+            if let Some(item) = parse_one(ctx) {
+                children.push(item);
+            }
+        } else {
+            ctx.restore(save);
+            break;
         }
     }
 }

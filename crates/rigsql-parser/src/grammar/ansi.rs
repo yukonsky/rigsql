@@ -7,7 +7,7 @@ use super::Grammar;
 /// ANSI SQL grammar — parses standard SQL statements only.
 pub struct AnsiGrammar;
 
-const ANSI_STATEMENT_KEYWORDS: &[&str] = &[
+pub(super) const ANSI_STATEMENT_KEYWORDS: &[&str] = &[
     "ALTER",
     "BREAK",
     "CLOSE",
