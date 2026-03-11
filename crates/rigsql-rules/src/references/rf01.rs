@@ -3,10 +3,10 @@ use rigsql_core::SegmentType;
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
 use crate::violation::LintViolation;
 
-/// RF01: Unresolved column reference.
+/// RF01: References cannot reference objects not present in FROM clause.
 ///
-/// Note: This rule requires schema information and is not yet fully implemented.
-/// Currently a stub that returns no violations.
+/// Checks that table/alias qualifiers used in SELECT, WHERE, etc. actually
+/// exist in the FROM or JOIN clauses of the query.
 #[derive(Debug, Default)]
 pub struct RuleRF01;
 
@@ -18,12 +18,13 @@ impl Rule for RuleRF01 {
         "references.from"
     }
     fn description(&self) -> &'static str {
-        "References cannot be resolved without schema information."
+        "References cannot reference objects not present in FROM clause."
     }
     fn explanation(&self) -> &'static str {
-        "Column references in SELECT, WHERE, and other clauses should resolve to \
-         a column in one of the referenced tables. This rule requires schema information \
-         and is not yet fully implemented."
+        "Table or alias qualifiers used in SELECT, WHERE, GROUP BY, and other clauses \
+         must correspond to a table or alias declared in the FROM or JOIN clauses. \
+         Referencing an undeclared alias like 'vee.a' when only 'foo' is in FROM \
+         is an error."
     }
     fn groups(&self) -> &[RuleGroup] {
         &[RuleGroup::References]
@@ -37,7 +38,7 @@ impl Rule for RuleRF01 {
     }
 
     fn eval(&self, _ctx: &RuleContext) -> Vec<LintViolation> {
-        // Stub: requires schema information to resolve column references.
+        // Stub: not yet implemented.
         vec![]
     }
 }
