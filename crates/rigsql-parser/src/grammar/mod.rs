@@ -75,6 +75,13 @@ pub trait Grammar: Send + Sync {
                     .map(|t| t.span.start)
                     .unwrap_or(ctx.source().len() as u32);
                 let mut unparsable_children = Vec::new();
+                // Always consume at least one token to guarantee forward
+                // progress and avoid infinite loops (e.g. when a statement
+                // keyword like WITH is not actually a valid statement start
+                // in this context, such as WITH(NOLOCK) table hints).
+                if let Some(token) = ctx.advance() {
+                    unparsable_children.push(any_token_segment(token));
+                }
                 while !ctx.at_eof() {
                     // Stop before a semicolon — consume it as part of the
                     // unparsable node so the next iteration starts cleanly.
