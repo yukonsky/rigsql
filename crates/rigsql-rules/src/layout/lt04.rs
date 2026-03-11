@@ -170,14 +170,19 @@ fn build_leading_to_trailing_fix(ctx: &RuleContext) -> Vec<SourceEdit> {
         }
     }
 
-    // Find the last non-trivia element before the newline (to insert comma after it)
+    // Find the last non-trivia element before the newline (to insert comma after it).
+    // Must skip LineComment/BlockComment too — inserting a comma after a line comment
+    // would place it inside the comment, breaking the SQL.
     let mut insert_pos = comma_span.start;
     if ctx.index_in_parent > 0 {
         let mut j = ctx.index_in_parent - 1;
         loop {
             let seg = &ctx.siblings[j];
             match seg.segment_type() {
-                SegmentType::Whitespace | SegmentType::Newline => {
+                SegmentType::Whitespace
+                | SegmentType::Newline
+                | SegmentType::LineComment
+                | SegmentType::BlockComment => {
                     if j == 0 {
                         break;
                     }

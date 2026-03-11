@@ -163,6 +163,30 @@ pub fn extract_alias_name(children: &[Segment]) -> Option<String> {
     None
 }
 
+/// Check if a segment ends with a Newline (possibly preceded by Whitespace).
+/// Used by layout rules (LT07, LT14) to detect newlines absorbed into clause bodies.
+pub fn has_trailing_newline(segment: &Segment) -> bool {
+    for child in segment.children().iter().rev() {
+        let st = child.segment_type();
+        if st == SegmentType::Newline {
+            return true;
+        }
+        if st == SegmentType::Whitespace {
+            continue;
+        }
+        return false;
+    }
+    false
+}
+
+/// Check if the current rule context is a table alias (parent is FROM or JOIN clause).
+pub fn is_in_table_context(ctx: &crate::rule::RuleContext) -> bool {
+    ctx.parent.is_some_and(|p| {
+        let pt = p.segment_type();
+        pt == SegmentType::FromClause || pt == SegmentType::JoinClause
+    })
+}
+
 /// Find a keyword by case-insensitive name in children. Returns (index, segment).
 pub fn find_keyword_in_children<'a>(
     children: &'a [Segment],
