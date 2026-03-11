@@ -63,3 +63,27 @@ impl Rule for RuleCV06 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{lint_sql, lint_sql_with_dialect};
+
+    #[test]
+    fn test_cv06_flags_missing_semicolon() {
+        let violations = lint_sql("SELECT 1", RuleCV06);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv06_accepts_semicolon() {
+        let violations = lint_sql("SELECT 1;", RuleCV06);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv06_skips_tsql() {
+        let violations = lint_sql_with_dialect("SELECT 1", RuleCV06, "tsql");
+        assert_eq!(violations.len(), 0);
+    }
+}

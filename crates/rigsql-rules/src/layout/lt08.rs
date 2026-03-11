@@ -89,3 +89,15 @@ fn scan_trivia_before(children: &[rigsql_core::Segment], cte_idx: usize) -> (usi
 
     (newline_count, last_newline_end)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt08_accepts_single_cte() {
+        let violations = lint_sql("WITH cte AS (SELECT 1) SELECT * FROM cte", RuleLT08);
+        assert_eq!(violations.len(), 0);
+    }
+}

@@ -70,3 +70,22 @@ impl Rule for RuleLT03 {
         violations
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt03_flags_missing_space() {
+        let violations = lint_sql("SELECT * FROM t WHERE x=1", RuleLT03);
+        assert!(!violations.is_empty());
+        assert!(violations.iter().all(|v| v.rule_code == "LT03"));
+    }
+
+    #[test]
+    fn test_lt03_accepts_proper_spacing() {
+        let violations = lint_sql("SELECT * FROM t WHERE x = 1", RuleLT03);
+        assert_eq!(violations.len(), 0);
+    }
+}

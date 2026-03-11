@@ -72,3 +72,27 @@ impl Rule for RuleLT12 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt12_flags_no_trailing_newline() {
+        let violations = lint_sql("SELECT 1", RuleLT12);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_lt12_accepts_single_trailing_newline() {
+        let violations = lint_sql("SELECT 1\n", RuleLT12);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt12_flags_multiple_trailing_newlines() {
+        let violations = lint_sql("SELECT 1\n\n", RuleLT12);
+        assert_eq!(violations.len(), 1);
+    }
+}

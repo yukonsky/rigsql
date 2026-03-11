@@ -58,3 +58,27 @@ impl Rule for RuleAL02 {
         )]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al02_flags_implicit_column_alias() {
+        let violations = lint_sql("SELECT col alias_name FROM t", RuleAL02);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al02_accepts_explicit_as() {
+        let violations = lint_sql("SELECT col AS alias_name FROM t", RuleAL02);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_al02_skips_non_select() {
+        let violations = lint_sql("SELECT * FROM t1 t2", RuleAL02);
+        assert_eq!(violations.len(), 0);
+    }
+}

@@ -138,3 +138,22 @@ fn collect_leaf_tokens_inner(segment: &Segment, out: &mut Vec<TokenSegment>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt11_flags_inline_union() {
+        let violations = lint_sql("SELECT 1 UNION SELECT 2", RuleLT11);
+        assert!(!violations.is_empty());
+        assert!(violations.iter().all(|v| v.rule_code == "LT11"));
+    }
+
+    #[test]
+    fn test_lt11_accepts_newlines() {
+        let violations = lint_sql("SELECT 1\nUNION\nSELECT 2", RuleLT11);
+        assert_eq!(violations.len(), 0);
+    }
+}

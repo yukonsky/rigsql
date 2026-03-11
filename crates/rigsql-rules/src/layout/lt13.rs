@@ -52,3 +52,21 @@ impl Rule for RuleLT13 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt13_flags_leading_whitespace() {
+        let violations = lint_sql("  SELECT 1", RuleLT13);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_lt13_accepts_no_leading_whitespace() {
+        let violations = lint_sql("SELECT 1", RuleLT13);
+        assert_eq!(violations.len(), 0);
+    }
+}

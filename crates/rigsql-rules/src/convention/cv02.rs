@@ -55,3 +55,27 @@ impl Rule for RuleCV02 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv02_flags_ifnull() {
+        let violations = lint_sql("SELECT IFNULL(a, 0) FROM t", RuleCV02);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv02_flags_nvl() {
+        let violations = lint_sql("SELECT NVL(a, 0) FROM t", RuleCV02);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv02_accepts_coalesce() {
+        let violations = lint_sql("SELECT COALESCE(a, 0) FROM t", RuleCV02);
+        assert_eq!(violations.len(), 0);
+    }
+}

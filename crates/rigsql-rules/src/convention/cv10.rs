@@ -107,3 +107,15 @@ fn find_bare_nulls(segment: &Segment, violations: &mut Vec<LintViolation>) {
         find_bare_nulls(child, violations);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv10_accepts_non_union() {
+        let violations = lint_sql("SELECT NULL FROM t", RuleCV10);
+        assert_eq!(violations.len(), 0);
+    }
+}

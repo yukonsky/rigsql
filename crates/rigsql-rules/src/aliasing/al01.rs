@@ -50,3 +50,32 @@ impl Rule for RuleAL01 {
         )]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al01_flags_implicit_alias() {
+        let violations = lint_sql("SELECT a b FROM t", RuleAL01);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al01_accepts_explicit_alias() {
+        let violations = lint_sql("SELECT a AS b FROM t", RuleAL01);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_al01_fix_inserts_as() {
+        let violations = lint_sql("SELECT a b FROM t", RuleAL01);
+        assert_eq!(violations.len(), 1);
+        assert!(!violations[0].fixes.is_empty());
+        assert!(violations[0]
+            .fixes
+            .iter()
+            .any(|f| f.new_text.contains("AS")));
+    }
+}

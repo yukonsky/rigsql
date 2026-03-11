@@ -95,3 +95,30 @@ impl Rule for RuleCP05 {
         violations
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cp05_flags_lowercase_type() {
+        let violations = lint_sql("SELECT CAST(1 AS int)", RuleCP05::default());
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cp05_accepts_uppercase_type() {
+        let violations = lint_sql("SELECT CAST(1 AS INT)", RuleCP05::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp05_lower_policy() {
+        let rule = RuleCP05 {
+            policy: DataTypeCapPolicy::Lower,
+        };
+        let violations = lint_sql("SELECT CAST(1 AS INT)", rule);
+        assert_eq!(violations.len(), 1);
+    }
+}

@@ -80,3 +80,30 @@ impl Rule for RuleCV04 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv04_count_1_not_detected_yet() {
+        // NOTE: Parser currently produces ParenExpression instead of FunctionArgs,
+        // so the rule cannot detect COUNT(1) yet. This test documents current behavior.
+        let violations = lint_sql("SELECT COUNT(1) FROM t", RuleCV04);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv04_count_0_not_detected_yet() {
+        // NOTE: Same parser limitation as above.
+        let violations = lint_sql("SELECT COUNT(0) FROM t", RuleCV04);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv04_accepts_count_star() {
+        let violations = lint_sql("SELECT COUNT(*) FROM t", RuleCV04);
+        assert_eq!(violations.len(), 0);
+    }
+}

@@ -97,3 +97,27 @@ impl RuleCP03 {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cp03_flags_mixed_case() {
+        let violations = lint_sql("SELECT Count(*) FROM t", RuleCP03);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cp03_accepts_all_upper() {
+        let violations = lint_sql("SELECT COUNT(*) FROM t", RuleCP03);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp03_accepts_all_lower() {
+        let violations = lint_sql("SELECT count(*) FROM t", RuleCP03);
+        assert_eq!(violations.len(), 0);
+    }
+}

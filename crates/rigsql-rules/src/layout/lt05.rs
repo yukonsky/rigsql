@@ -74,3 +74,33 @@ impl Rule for RuleLT05 {
         violations
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt05_flags_long_line() {
+        let long_sql = format!("SELECT {} FROM t", "a, ".repeat(30));
+        let violations = lint_sql(&long_sql, RuleLT05::default());
+        assert!(!violations.is_empty());
+        assert!(violations.iter().all(|v| v.rule_code == "LT05"));
+    }
+
+    #[test]
+    fn test_lt05_accepts_short_line() {
+        let violations = lint_sql("SELECT * FROM t", RuleLT05::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt05_custom_max_length() {
+        let rule = RuleLT05 {
+            max_line_length: 120,
+        };
+        let sql_100_chars = format!("SELECT {} FROM t", "x".repeat(88));
+        let violations = lint_sql(&sql_100_chars, rule);
+        assert_eq!(violations.len(), 0);
+    }
+}

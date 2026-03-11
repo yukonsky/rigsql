@@ -100,3 +100,15 @@ impl Rule for RuleLT07 {
         )]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt07_accepts_proper_spacing() {
+        let violations = lint_sql("WITH cte AS (SELECT 1) SELECT * FROM cte", RuleLT07);
+        assert_eq!(violations.len(), 0);
+    }
+}
