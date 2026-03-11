@@ -2,6 +2,9 @@ pub mod rule;
 pub mod utils;
 mod violation;
 
+#[cfg(test)]
+pub(crate) mod test_utils;
+
 pub mod aliasing;
 pub mod capitalisation;
 pub mod convention;

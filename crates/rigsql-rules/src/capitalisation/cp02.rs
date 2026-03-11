@@ -104,3 +104,42 @@ impl Rule for RuleCP02 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cp02_consistent_default_no_violation() {
+        let violations = lint_sql("SELECT Users FROM t", RuleCP02::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp02_lower_policy_flags_upper() {
+        let rule = RuleCP02 {
+            policy: IdentifierPolicy::Lower,
+        };
+        let violations = lint_sql("SELECT Users FROM t", rule);
+        assert!(!violations.is_empty());
+    }
+
+    #[test]
+    fn test_cp02_skips_keywords() {
+        let rule = RuleCP02 {
+            policy: IdentifierPolicy::Lower,
+        };
+        let violations = lint_sql("SELECT id FROM users", rule);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp02_skips_function_parent() {
+        let rule = RuleCP02 {
+            policy: IdentifierPolicy::Lower,
+        };
+        let violations = lint_sql("SELECT COUNT(id) FROM users", rule);
+        assert_eq!(violations.len(), 0);
+    }
+}

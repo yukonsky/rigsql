@@ -64,3 +64,24 @@ impl Rule for RuleCV12 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv12_flags_having_without_group_by() {
+        let violations = lint_sql("SELECT COUNT(*) FROM t HAVING COUNT(*) > 1", RuleCV12);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv12_accepts_having_with_group_by() {
+        let violations = lint_sql(
+            "SELECT a, COUNT(*) FROM t GROUP BY a HAVING COUNT(*) > 1",
+            RuleCV12,
+        );
+        assert_eq!(violations.len(), 0);
+    }
+}

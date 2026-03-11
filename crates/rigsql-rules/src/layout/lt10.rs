@@ -86,3 +86,22 @@ impl Rule for RuleLT10 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt10_accepts_same_line() {
+        let violations = lint_sql("SELECT DISTINCT a FROM t", RuleLT10);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt10_flags_next_line() {
+        let violations = lint_sql("SELECT\nDISTINCT a FROM t", RuleLT10);
+        assert!(violations.len() >= 1);
+        assert!(violations.iter().all(|v| v.rule_code == "LT10"));
+    }
+}

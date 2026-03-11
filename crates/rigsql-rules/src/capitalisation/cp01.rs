@@ -99,3 +99,53 @@ fn capitalise(s: &str) -> String {
         None => String::new(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cp01_flags_lowercase_keyword() {
+        let violations = lint_sql("select 1", RuleCP01::default());
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cp01_accepts_uppercase_keyword() {
+        let violations = lint_sql("SELECT 1", RuleCP01::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp01_fix_replaces_to_upper() {
+        let violations = lint_sql("select 1", RuleCP01::default());
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "SELECT");
+    }
+
+    #[test]
+    fn test_cp01_lower_policy() {
+        let rule = RuleCP01 {
+            policy: CapitalisationPolicy::Lower,
+        };
+        let violations = lint_sql("SELECT 1", rule);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cp01_multiple_keywords() {
+        let violations = lint_sql("select * from users where id = 1", RuleCP01::default());
+        let codes: Vec<&str> = violations.iter().map(|v| v.rule_code).collect();
+        assert!(codes.iter().all(|&c| c == "CP01"));
+        assert!(violations.len() >= 3);
+        let fix_texts: Vec<&str> = violations
+            .iter()
+            .map(|v| v.fixes[0].new_text.as_str())
+            .collect();
+        assert!(fix_texts.contains(&"SELECT"));
+        assert!(fix_texts.contains(&"FROM"));
+        assert!(fix_texts.contains(&"WHERE"));
+    }
+}

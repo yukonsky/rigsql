@@ -241,3 +241,22 @@ fn build_trailing_to_leading_fix(ctx: &RuleContext) -> Vec<SourceEdit> {
         SourceEdit::insert(insert_pos, ", "),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt04_accepts_trailing_comma() {
+        let violations = lint_sql("SELECT a, b FROM t", RuleLT04::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt04_flags_leading_comma() {
+        let violations = lint_sql("SELECT a\n    ,b FROM t", RuleLT04::default());
+        assert!(violations.len() >= 1);
+        assert!(violations.iter().all(|v| v.rule_code == "LT04"));
+    }
+}

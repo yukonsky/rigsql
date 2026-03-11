@@ -55,3 +55,25 @@ impl Rule for RuleLT14 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt14_double_semicolon_not_detected_yet() {
+        let violations = lint_sql("SELECT 1;;", RuleLT14);
+        // NOTE: The parser places the two semicolons in different parent nodes
+        // (Statement vs Unparsable), so they are not siblings and the rule
+        // cannot detect them. When the parser is improved, this should flag.
+        // For now, verify it at least does not panic.
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt14_accepts_single_semicolon() {
+        let violations = lint_sql("SELECT 1;", RuleLT14);
+        assert_eq!(violations.len(), 0);
+    }
+}

@@ -66,3 +66,21 @@ impl Rule for RuleAL08 {
         violations
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al08_flags_duplicate_column_alias() {
+        let violations = lint_sql("SELECT a AS x, b AS x FROM t", RuleAL08);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al08_accepts_unique_column_aliases() {
+        let violations = lint_sql("SELECT a AS x, b AS y FROM t", RuleAL08);
+        assert_eq!(violations.len(), 0);
+    }
+}

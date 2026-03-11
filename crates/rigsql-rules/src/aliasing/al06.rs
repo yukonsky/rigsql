@@ -72,3 +72,21 @@ fn check_subqueries_have_alias(
         check_subqueries_have_alias(child, violations, code);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al06_flags_bare_subquery() {
+        let violations = lint_sql("SELECT * FROM (SELECT 1)", RuleAL06);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al06_accepts_aliased_subquery() {
+        let violations = lint_sql("SELECT * FROM (SELECT 1) AS sub", RuleAL06);
+        assert_eq!(violations.len(), 0);
+    }
+}

@@ -66,3 +66,28 @@ impl Rule for RuleLT01 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt01_flags_double_space() {
+        let violations = lint_sql("SELECT  *  FROM t", RuleLT01);
+        assert!(violations.len() >= 1);
+        assert!(violations.iter().all(|v| v.rule_code == "LT01"));
+    }
+
+    #[test]
+    fn test_lt01_accepts_single_space() {
+        let violations = lint_sql("SELECT * FROM t", RuleLT01);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt01_skips_indentation() {
+        let violations = lint_sql("SELECT *\n    FROM t", RuleLT01);
+        assert_eq!(violations.len(), 0);
+    }
+}

@@ -99,3 +99,29 @@ impl Rule for RuleLT02 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt02_flags_odd_indent() {
+        let violations = lint_sql("SELECT *\n   FROM t", RuleLT02::default());
+        assert!(violations.len() >= 1);
+        assert!(violations.iter().all(|v| v.rule_code == "LT02"));
+    }
+
+    #[test]
+    fn test_lt02_accepts_4space_indent() {
+        let violations = lint_sql("SELECT *\n    FROM t", RuleLT02::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt02_flags_mixed_tabs_spaces() {
+        let violations = lint_sql("SELECT *\n\t FROM t", RuleLT02::default());
+        assert!(violations.len() >= 1);
+        assert!(violations.iter().all(|v| v.rule_code == "LT02"));
+    }
+}

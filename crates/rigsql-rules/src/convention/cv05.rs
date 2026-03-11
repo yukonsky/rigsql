@@ -81,3 +81,21 @@ fn is_null_literal(seg: &Segment) -> bool {
         Segment::Node(n) => n.segment_type == SegmentType::NullLiteral,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv05_flags_equals_null() {
+        let violations = lint_sql("SELECT * FROM t WHERE a = NULL", RuleCV05);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv05_accepts_is_null() {
+        let violations = lint_sql("SELECT * FROM t WHERE a IS NULL", RuleCV05);
+        assert_eq!(violations.len(), 0);
+    }
+}

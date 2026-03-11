@@ -56,3 +56,21 @@ impl Rule for RuleCV08 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv08_flags_right_join() {
+        let violations = lint_sql("SELECT * FROM a RIGHT JOIN b ON a.id = b.id", RuleCV08);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv08_accepts_left_join() {
+        let violations = lint_sql("SELECT * FROM a LEFT JOIN b ON a.id = b.id", RuleCV08);
+        assert_eq!(violations.len(), 0);
+    }
+}

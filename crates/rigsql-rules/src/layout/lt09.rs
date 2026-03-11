@@ -68,3 +68,22 @@ impl Rule for RuleLT09 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt09_flags_multiple_targets_single_line() {
+        let violations = lint_sql("SELECT a, b, c FROM t", RuleLT09);
+        assert!(violations.len() >= 1);
+        assert!(violations.iter().all(|v| v.rule_code == "LT09"));
+    }
+
+    #[test]
+    fn test_lt09_accepts_single_target() {
+        let violations = lint_sql("SELECT a FROM t", RuleLT09);
+        assert_eq!(violations.len(), 0);
+    }
+}

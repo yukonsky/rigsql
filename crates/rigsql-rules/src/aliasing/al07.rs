@@ -67,3 +67,22 @@ impl Rule for RuleAL07 {
         )]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al07_disabled_by_default() {
+        let violations = lint_sql("SELECT * FROM users AS u", RuleAL07::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_al07_enabled_flags_alias() {
+        let rule = RuleAL07 { force_enable: true };
+        let violations = lint_sql("SELECT * FROM users AS u", rule);
+        assert!(!violations.is_empty());
+    }
+}

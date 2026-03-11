@@ -142,3 +142,21 @@ fn find_last_identifier_in(segment: &Segment) -> Option<String> {
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al09_flags_self_alias() {
+        let violations = lint_sql("SELECT col AS col FROM t", RuleAL09);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al09_accepts_different_alias() {
+        let violations = lint_sql("SELECT col AS c FROM t", RuleAL09);
+        assert_eq!(violations.len(), 0);
+    }
+}

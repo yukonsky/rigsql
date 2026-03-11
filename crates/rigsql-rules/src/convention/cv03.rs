@@ -58,3 +58,21 @@ impl Rule for RuleCV03 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv03_flags_trailing_comma() {
+        let violations = lint_sql("SELECT a, b,", RuleCV03);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv03_accepts_no_trailing_comma() {
+        let violations = lint_sql("SELECT a, b FROM t", RuleCV03);
+        assert_eq!(violations.len(), 0);
+    }
+}

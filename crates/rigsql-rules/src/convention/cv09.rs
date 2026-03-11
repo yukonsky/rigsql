@@ -67,3 +67,24 @@ impl Rule for RuleCV09 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv09_no_blocked_words_no_violation() {
+        let violations = lint_sql("SELECT temp FROM t", RuleCV09::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv09_flags_blocked_word() {
+        let rule = RuleCV09 {
+            blocked_words: vec!["temp".to_string(), "foo".to_string()],
+        };
+        let violations = lint_sql("SELECT temp FROM t", rule);
+        assert_eq!(violations.len(), 1);
+    }
+}

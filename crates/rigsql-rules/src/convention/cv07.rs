@@ -168,3 +168,27 @@ fn get_else_expression(segment: &Segment) -> Option<String> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv07_flags_case_is_null_pattern() {
+        let violations = lint_sql(
+            "SELECT CASE WHEN col IS NULL THEN 'default' ELSE col END FROM t",
+            RuleCV07,
+        );
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv07_accepts_complex_case() {
+        let violations = lint_sql(
+            "SELECT CASE WHEN x = 1 THEN 'a' ELSE 'b' END FROM t",
+            RuleCV07,
+        );
+        assert_eq!(violations.len(), 0);
+    }
+}

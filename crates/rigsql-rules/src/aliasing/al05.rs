@@ -91,3 +91,24 @@ fn extract_cte_name(cte_def: &Segment) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al05_flags_unused_cte() {
+        let violations = lint_sql(
+            "WITH unused AS (SELECT 1) SELECT * FROM other_table",
+            RuleAL05,
+        );
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al05_accepts_used_cte() {
+        let violations = lint_sql("WITH cte AS (SELECT 1) SELECT * FROM cte", RuleAL05);
+        assert_eq!(violations.len(), 0);
+    }
+}

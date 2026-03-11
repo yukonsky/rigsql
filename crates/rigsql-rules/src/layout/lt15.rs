@@ -67,3 +67,22 @@ impl Rule for RuleLT15 {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt15_flags_distinct_with_paren() {
+        let violations = lint_sql("SELECT DISTINCT(a) FROM t", RuleLT15);
+        assert!(violations.len() >= 1);
+        assert!(violations.iter().all(|v| v.rule_code == "LT15"));
+    }
+
+    #[test]
+    fn test_lt15_accepts_distinct_without_paren() {
+        let violations = lint_sql("SELECT DISTINCT a FROM t", RuleLT15);
+        assert_eq!(violations.len(), 0);
+    }
+}

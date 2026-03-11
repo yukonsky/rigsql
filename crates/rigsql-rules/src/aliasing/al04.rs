@@ -107,3 +107,27 @@ fn find_alias_names(segment: &Segment, aliases: &mut Vec<(String, rigsql_core::S
         find_alias_names(child, aliases);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al04_flags_duplicate_alias() {
+        let violations = lint_sql(
+            "SELECT * FROM t1 AS a JOIN t2 AS a ON t1.id = t2.id",
+            RuleAL04,
+        );
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al04_accepts_unique_aliases() {
+        let violations = lint_sql(
+            "SELECT * FROM t1 AS a JOIN t2 AS b ON a.id = b.id",
+            RuleAL04,
+        );
+        assert_eq!(violations.len(), 0);
+    }
+}

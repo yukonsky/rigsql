@@ -44,3 +44,21 @@ impl Rule for RuleCV11 {
         )]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv11_flags_between() {
+        let violations = lint_sql("SELECT * FROM t WHERE x BETWEEN 1 AND 10", RuleCV11);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv11_accepts_comparison() {
+        let violations = lint_sql("SELECT * FROM t WHERE x >= 1", RuleCV11);
+        assert_eq!(violations.len(), 0);
+    }
+}

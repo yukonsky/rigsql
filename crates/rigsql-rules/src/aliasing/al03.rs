@@ -84,3 +84,27 @@ fn is_wrapped_in_alias(seg: &Segment, _ctx: &RuleContext) -> bool {
     // it means it wasn't aliased.
     seg.segment_type() == SegmentType::AliasExpression
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al03_flags_function_without_alias() {
+        let violations = lint_sql("SELECT COUNT(*) FROM t", RuleAL03);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al03_accepts_function_with_alias() {
+        let violations = lint_sql("SELECT COUNT(*) AS cnt FROM t", RuleAL03);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_al03_accepts_simple_column() {
+        let violations = lint_sql("SELECT a FROM t", RuleAL03);
+        assert_eq!(violations.len(), 0);
+    }
+}
