@@ -1,10 +1,16 @@
 use crate::rule::{lint, Rule};
 use crate::violation::LintViolation;
 use rigsql_lexer::LexerConfig;
-use rigsql_parser::{AnsiGrammar, Parser};
+use rigsql_parser::{AnsiGrammar, Parser, TsqlGrammar};
 
 pub fn parse(sql: &str) -> rigsql_core::Segment {
     Parser::new(LexerConfig::ansi(), Box::new(AnsiGrammar))
+        .parse(sql)
+        .unwrap()
+}
+
+pub fn parse_tsql(sql: &str) -> rigsql_core::Segment {
+    Parser::new(LexerConfig::tsql(), Box::new(TsqlGrammar))
         .parse(sql)
         .unwrap()
 }
@@ -19,6 +25,9 @@ pub fn lint_sql_with_dialect(
     rule: impl Rule + 'static,
     dialect: &str,
 ) -> Vec<LintViolation> {
-    let cst = parse(sql);
+    let cst = match dialect {
+        "tsql" => parse_tsql(sql),
+        _ => parse(sql),
+    };
     lint(&cst, sql, &[Box::new(rule)], dialect)
 }
