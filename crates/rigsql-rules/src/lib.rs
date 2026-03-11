@@ -27,6 +27,7 @@ pub fn default_rules() -> Vec<Box<dyn Rule>> {
         Box::new(layout::lt05::RuleLT05::default()),
         Box::new(layout::lt06::RuleLT06),
         Box::new(layout::lt07::RuleLT07),
+        Box::new(layout::lt08::RuleLT08),
         Box::new(layout::lt09::RuleLT09),
         Box::new(layout::lt10::RuleLT10),
         Box::new(layout::lt11::RuleLT11),
@@ -53,6 +54,9 @@ pub fn default_rules() -> Vec<Box<dyn Rule>> {
         Box::new(aliasing::al03::RuleAL03),
         Box::new(aliasing::al04::RuleAL04),
         Box::new(aliasing::al05::RuleAL05),
+        Box::new(aliasing::al06::RuleAL06),
         Box::new(aliasing::al07::RuleAL07::default()),
+        Box::new(aliasing::al08::RuleAL08),
+        Box::new(aliasing::al09::RuleAL09),
     ]
 }
