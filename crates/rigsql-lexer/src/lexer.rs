@@ -165,6 +165,16 @@ impl<'a> Lexer<'a> {
             // Bracket-quoted identifier: [name] (SQL Server)
             b'[' if self.config.bracket_identifiers => self.lex_bracket_identifier(start),
 
+            // Array subscript brackets (PostgreSQL)
+            b'[' => {
+                self.pos += 1;
+                Ok(self.make_token(TokenKind::LBracket, start))
+            }
+            b']' => {
+                self.pos += 1;
+                Ok(self.make_token(TokenKind::RBracket, start))
+            }
+
             // Backtick identifier: `name` (MySQL)
             b'`' if self.config.backtick_identifiers => self.lex_quoted_identifier(start, b'`'),
 

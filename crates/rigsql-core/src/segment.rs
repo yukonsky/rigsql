@@ -110,6 +110,11 @@ pub enum SegmentType {
     AlterTableStatement,
     DropStatement,
 
+    // PostgreSQL
+    TypeCastExpression,
+    OnConflictClause,
+    ArrayAccessExpression,
+
     // TSQL Statements
     DeclareStatement,
     SetVariableStatement,

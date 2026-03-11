@@ -56,6 +56,8 @@ pub enum TokenKind {
     ColonColon, // :: (PostgreSQL cast)
     AtSign,     // @ (SQL Server variable prefix)
     Colon,      // : (named parameter)
+    LBracket,   // [ (array subscript, PostgreSQL)
+    RBracket,   // ] (array subscript, PostgreSQL)
 
     // Whitespace & Comments
     Whitespace,

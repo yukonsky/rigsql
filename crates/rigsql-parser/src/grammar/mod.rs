@@ -1,7 +1,9 @@
 mod ansi;
+mod postgres;
 mod tsql;
 
 pub use ansi::AnsiGrammar;
+pub use postgres::PostgresGrammar;
 pub use tsql::TsqlGrammar;
 
 use rigsql_core::{NodeSegment, Segment, SegmentType, Token, TokenKind, TokenSegment};
