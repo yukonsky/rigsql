@@ -67,10 +67,12 @@ impl Rule for RuleCV04 {
                 if args.len() == 1 {
                     let text = args[0].text.as_str();
                     if text == "0" || text == "1" {
-                        return vec![LintViolation::new(
+                        return vec![LintViolation::with_msg_key(
                             self.code(),
                             format!("Use COUNT(*) instead of COUNT({}).", text),
                             ctx.segment.span(),
+                            "rules.CV04.msg",
+                            vec![("arg".to_string(), text.to_string())],
                         )];
                     }
                 }

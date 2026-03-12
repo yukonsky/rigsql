@@ -68,24 +68,24 @@ impl Rule for RuleLT11 {
             let has_newline_after = check_adjacent_newline(&tokens, end_idx, Direction::After);
 
             if !has_newline_before {
-                violations.push(LintViolation::new(
+                let operator_text = t.token.text.to_ascii_uppercase();
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
-                    format!(
-                        "Expected newline before '{}'.",
-                        t.token.text.to_ascii_uppercase()
-                    ),
+                    format!("Expected newline before '{}'.", operator_text),
                     op_span,
+                    "rules.LT11.msg.before",
+                    vec![("operator".to_string(), operator_text)],
                 ));
             }
 
             if !has_newline_after {
-                violations.push(LintViolation::new(
+                let operator_text = t.token.text.to_ascii_uppercase();
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
-                    format!(
-                        "Expected newline after '{}'.",
-                        t.token.text.to_ascii_uppercase()
-                    ),
+                    format!("Expected newline after '{}'.", operator_text),
                     op_span,
+                    "rules.LT11.msg.after",
+                    vec![("operator".to_string(), operator_text)],
                 ));
             }
         }

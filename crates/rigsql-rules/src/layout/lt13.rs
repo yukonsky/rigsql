@@ -41,11 +41,13 @@ impl Rule for RuleLT13 {
         match first_non_ws {
             Some(0) => vec![], // starts with content
             Some(pos) => {
-                vec![LintViolation::with_fix(
+                vec![LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "File starts with whitespace or blank lines.",
                     rigsql_core::Span::new(0, pos as u32),
                     vec![SourceEdit::delete(rigsql_core::Span::new(0, pos as u32))],
+                    "rules.LT13.msg",
+                    vec![],
                 )]
             }
             None => vec![], // all whitespace file — other rules handle this

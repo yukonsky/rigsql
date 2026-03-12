@@ -70,17 +70,21 @@ impl Rule for RuleCV11 {
 
         match self.preferred_style {
             CastingStyle::Cast if st == SegmentType::TypeCastExpression => {
-                vec![LintViolation::new(
+                vec![LintViolation::with_msg_key(
                     self.code(),
                     "Use CAST(x AS type) instead of :: syntax.",
                     ctx.segment.span(),
+                    "rules.CV11.msg.cast",
+                    vec![],
                 )]
             }
             CastingStyle::DoubleColon if st == SegmentType::CastExpression => {
-                vec![LintViolation::new(
+                vec![LintViolation::with_msg_key(
                     self.code(),
                     "Use :: syntax instead of CAST(x AS type).",
                     ctx.segment.span(),
+                    "rules.CV11.msg.shorthand",
+                    vec![],
                 )]
             }
             _ => vec![],

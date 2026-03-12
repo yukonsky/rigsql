@@ -43,10 +43,12 @@ impl Rule for RuleAM08 {
             .iter()
             .filter(|c| c.segment_type() == SegmentType::Comma)
             .map(|comma| {
-                LintViolation::new(
+                LintViolation::with_msg_key(
                     self.code(),
                     "Implicit cross join via comma in FROM clause. Use explicit JOIN.",
                     comma.span(),
+                    "rules.AM08.msg",
+                    vec![],
                 )
             })
             .collect()

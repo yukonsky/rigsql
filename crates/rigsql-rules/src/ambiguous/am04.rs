@@ -46,10 +46,12 @@ impl Rule for RuleAM04 {
 /// Find Star segments that are NOT inside a FunctionCall (e.g. COUNT(*) is ok).
 fn find_bare_stars(segment: &Segment, in_function: bool, violations: &mut Vec<LintViolation>) {
     if segment.segment_type() == SegmentType::Star && !in_function {
-        violations.push(LintViolation::new(
+        violations.push(LintViolation::with_msg_key(
             "AM04",
             "SELECT * used. List columns explicitly.",
             segment.span(),
+            "rules.AM04.msg",
+            vec![],
         ));
         return;
     }

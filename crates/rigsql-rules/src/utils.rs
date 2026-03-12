@@ -128,14 +128,24 @@ pub fn check_capitalisation(
     span: Span,
 ) -> Option<LintViolation> {
     if text != expected {
-        Some(LintViolation::with_fix(
+        let message = format!(
+            "{} must be {} case. Found '{}' instead of '{}'.",
+            category, policy_name, text, expected
+        );
+        let msg_key = format!("rules.{rule_code}.msg");
+        let params = vec![
+            ("category".to_string(), category.to_string()),
+            ("policy".to_string(), policy_name.to_string()),
+            ("found".to_string(), text.to_string()),
+            ("expected".to_string(), expected.to_string()),
+        ];
+        Some(LintViolation::with_fix_and_msg_key(
             rule_code,
-            format!(
-                "{} must be {} case. Found '{}' instead of '{}'.",
-                category, policy_name, text, expected
-            ),
+            message,
             span,
             vec![SourceEdit::replace(span, expected.to_string())],
+            msg_key,
+            params,
         ))
     } else {
         None

@@ -92,10 +92,12 @@ fn find_bare_nulls(segment: &Segment, violations: &mut Vec<LintViolation>) {
     }
 
     if segment.segment_type() == SegmentType::NullLiteral {
-        violations.push(LintViolation::new(
+        violations.push(LintViolation::with_msg_key(
             "RG02",
             "Bare NULL in UNION. Consider using an explicit CAST.",
             segment.span(),
+            "rules.RG02.msg",
+            vec![],
         ));
         return;
     }

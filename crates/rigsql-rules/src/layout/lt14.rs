@@ -97,11 +97,13 @@ impl Rule for RuleLT14 {
                 } else {
                     vec![SourceEdit::insert(child.span().start, &newline_with_indent)]
                 };
-                violations.push(LintViolation::with_fix(
+                violations.push(LintViolation::with_fix_and_msg_key(
                     self.code(),
                     format!("{} clause should start on a new line.", clause_name),
                     child.span(),
                     fix,
+                    "rules.LT14.msg",
+                    vec![("clause".to_string(), clause_name.to_string())],
                 ));
             }
         }

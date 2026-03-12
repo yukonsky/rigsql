@@ -43,10 +43,12 @@ impl Rule for RuleST12 {
             let st = seg.segment_type();
             if st == SegmentType::Semicolon {
                 if only_trivia_since_last && last_semicolon_span.is_some() {
-                    violations.push(LintViolation::new(
+                    violations.push(LintViolation::with_msg_key(
                         self.code(),
                         "Consecutive semicolons found (empty statement).",
                         seg.span(),
+                        "rules.ST12.msg",
+                        vec![],
                     ));
                 }
                 last_semicolon_span = Some(seg.span());

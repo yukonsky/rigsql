@@ -47,10 +47,12 @@ impl Rule for RuleRF05 {
         let has_special = text.chars().any(|c| !c.is_alphanumeric() && c != '_');
 
         if has_special {
-            vec![LintViolation::new(
+            vec![LintViolation::with_msg_key(
                 self.code(),
                 format!("Identifier '{}' contains special characters.", text),
                 t.token.span,
+                "rules.RF05.msg",
+                vec![("name".to_string(), text.to_string())],
             )]
         } else {
             vec![]

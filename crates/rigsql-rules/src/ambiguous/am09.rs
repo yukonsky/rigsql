@@ -48,10 +48,12 @@ impl Rule for RuleAM09 {
 
         if let Some(limit) = limit_clause {
             if !has_order_by {
-                return vec![LintViolation::new(
+                return vec![LintViolation::with_msg_key(
                     self.code(),
                     "LIMIT without ORDER BY gives non-deterministic results.",
                     limit.span(),
+                    "rules.AM09.msg",
+                    vec![],
                 )];
             }
         }

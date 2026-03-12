@@ -53,10 +53,12 @@ impl Rule for RuleRG04 {
                 .map(|c| c.span())
                 .unwrap_or(ctx.segment.span());
 
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 "HAVING clause without GROUP BY. Use WHERE for ungrouped filtering.",
                 having_span,
+                "rules.RG04.msg",
+                vec![],
             )];
         }
 

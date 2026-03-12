@@ -50,11 +50,13 @@ impl Rule for RuleAL02 {
             return vec![];
         }
 
-        vec![LintViolation::with_fix(
+        vec![LintViolation::with_fix_and_msg_key(
             self.code(),
             "Implicit column aliasing not allowed. Use explicit AS keyword.",
             ctx.segment.span(),
             insert_as_keyword_fix(children),
+            "rules.AL02.msg",
+            vec![],
         )]
     }
 }

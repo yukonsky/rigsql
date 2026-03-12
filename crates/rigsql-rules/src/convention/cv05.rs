@@ -61,10 +61,12 @@ impl Rule for RuleCV05 {
         let rhs_is_null = non_trivia.get(2).is_some_and(|s| is_null_literal(s));
 
         if lhs_is_null || rhs_is_null {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 "Use IS NULL or IS NOT NULL instead of comparison operator with NULL.",
                 ctx.segment.span(),
+                "rules.CV05.msg",
+                vec![],
             )];
         }
 

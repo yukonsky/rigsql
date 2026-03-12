@@ -52,10 +52,12 @@ impl Rule for RuleAL03 {
             // If it's an expression (not column ref, not alias expr, not star),
             // it should be aliased
             if is_complex_expression(child) && !is_wrapped_in_alias(child, ctx) {
-                violations.push(LintViolation::new(
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
                     "Column expression should have an explicit alias.",
                     child.span(),
+                    "rules.AL03.msg",
+                    vec![],
                 ));
             }
         }

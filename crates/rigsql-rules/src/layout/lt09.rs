@@ -58,10 +58,12 @@ impl Rule for RuleLT09 {
             .any(|c| c.segment_type() == SegmentType::Newline);
 
         if !has_newline_between_targets {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 "Select targets should be on separate lines.",
                 ctx.segment.span(),
+                "rules.LT09.msg",
+                vec![],
             )];
         }
 

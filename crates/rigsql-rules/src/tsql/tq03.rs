@@ -50,10 +50,12 @@ impl Rule for RuleTQ03 {
             if child.segment_type() == SegmentType::GoStatement {
                 if let Some(_prev_span) = last_go_span {
                     // Consecutive GO with nothing meaningful between them
-                    violations.push(LintViolation::new(
+                    violations.push(LintViolation::with_msg_key(
                         self.code(),
                         "Empty batch: consecutive GO statements with no content between them.",
                         child.span(),
+                        "rules.TQ03.msg",
+                        vec![],
                     ));
                 }
                 last_go_span = Some(child.span());

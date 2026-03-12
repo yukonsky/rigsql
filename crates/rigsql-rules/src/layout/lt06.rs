@@ -79,11 +79,13 @@ impl Rule for RuleLT06 {
             .collect();
 
         let first_ws = whitespace_spans[0];
-        vec![LintViolation::with_fix(
+        vec![LintViolation::with_fix_and_msg_key(
             self.code(),
             "No whitespace allowed between function name and parenthesis.",
             first_ws,
             fixes,
+            "rules.LT06.msg",
+            vec![],
         )]
     }
 }

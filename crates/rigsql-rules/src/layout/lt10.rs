@@ -67,13 +67,15 @@ impl Rule for RuleLT10 {
                 if (text.eq_ignore_ascii_case("DISTINCT") || text.eq_ignore_ascii_case("ALL"))
                     && has_newline
                 {
-                    return vec![LintViolation::new(
+                    return vec![LintViolation::with_msg_key(
                         self.code(),
                         format!(
                             "'{}' must be on the same line as SELECT.",
                             text.to_uppercase()
                         ),
                         t.token.span,
+                        "rules.LT10.msg",
+                        vec![("modifier".to_string(), text.to_uppercase())],
                     )];
                 }
                 // Whether it was a modifier or not, stop looking

@@ -54,11 +54,13 @@ impl Rule for RuleLT08 {
             let (newline_count, insert_offset) = scan_trivia_before(children, i);
 
             if newline_count < 2 {
-                violations.push(LintViolation::with_fix(
+                violations.push(LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Expected blank line before CTE definition.",
                     child.span(),
                     vec![SourceEdit::insert(insert_offset, "\n")],
+                    "rules.LT08.msg",
+                    vec![],
                 ));
             }
         }

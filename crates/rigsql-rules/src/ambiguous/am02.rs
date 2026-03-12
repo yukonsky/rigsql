@@ -65,10 +65,12 @@ fn find_bare_unions(segment: &Segment, violations: &mut Vec<LintViolation>) {
                 });
 
                 if !has_qualifier {
-                    violations.push(LintViolation::new(
+                    violations.push(LintViolation::with_msg_key(
                         "AM02",
                         "UNION without explicit DISTINCT or ALL.",
                         t.token.span,
+                        "rules.AM02.msg",
+                        vec![],
                     ));
                 }
             }

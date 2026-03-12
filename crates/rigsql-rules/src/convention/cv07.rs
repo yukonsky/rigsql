@@ -62,7 +62,7 @@ impl Rule for RuleCV07 {
             || matches!(check_last, Segment::Token(t) if t.token.text.as_str() == ")");
 
         if is_lparen && is_rparen {
-            vec![LintViolation::with_fix(
+            vec![LintViolation::with_fix_and_msg_key(
                 self.code(),
                 "Unnecessary brackets around statement.",
                 ctx.segment.span(),
@@ -70,6 +70,8 @@ impl Rule for RuleCV07 {
                     SourceEdit::delete(first.span()),
                     SourceEdit::delete(check_last.span()),
                 ],
+                "rules.CV07.msg",
+                vec![],
             )]
         } else {
             vec![]

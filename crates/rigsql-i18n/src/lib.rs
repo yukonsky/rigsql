@@ -41,6 +41,42 @@ pub fn t(key: &str) -> String {
     translated.to_string()
 }
 
+/// Translate a violation message using its key and parameters.
+/// Returns the translated message with parameters substituted.
+/// Falls back to `fallback` if no translation is found or key is empty.
+pub fn rule_message(key: &str, params: &[(String, String)], fallback: &str) -> String {
+    if key.is_empty() {
+        return fallback.to_string();
+    }
+    let translated = rust_i18n::t!(key);
+    let translated_str = translated.to_string();
+    // rust-i18n returns the key itself when no translation is found
+    if translated_str == key {
+        return fallback.to_string();
+    }
+    // Substitute parameters: %{name} → value
+    // Parameter values themselves may have translations (e.g. "upper" → "大文字")
+    let mut result = translated_str;
+    for (k, v) in params {
+        let translated_v = translate_param_value(v);
+        result = result.replace(&format!("%{{{k}}}"), &translated_v);
+    }
+    result
+}
+
+/// Try to translate a parameter value using the "params.*" namespace.
+/// Falls back to the original value if no translation exists.
+fn translate_param_value(value: &str) -> String {
+    let key = format!("params.{value}");
+    let translated = rust_i18n::t!(&key);
+    let translated_str = translated.to_string();
+    if translated_str == key {
+        value.to_string()
+    } else {
+        translated_str
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -62,13 +62,18 @@ impl Rule for RuleAM06 {
             return targets
                 .iter()
                 .map(|span| {
-                    LintViolation::new(
+                    LintViolation::with_msg_key(
                         self.code(),
                         format!(
                             "Mixed positional and explicit references in {}. Found {} reference.",
                             clause_name, style
                         ),
                         *span,
+                        "rules.AM06.msg",
+                        vec![
+                            ("clause".to_string(), clause_name.to_string()),
+                            ("style".to_string(), style.to_string()),
+                        ],
                     )
                 })
                 .collect();

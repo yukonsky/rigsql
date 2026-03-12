@@ -51,10 +51,12 @@ impl Rule for RuleST10 {
 
         // Check for single boolean literal: WHERE TRUE / WHERE FALSE
         if non_trivia.len() == 2 && non_trivia[1].segment_type() == SegmentType::BooleanLiteral {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 "WHERE clause contains a constant expression.",
                 ctx.segment.span(),
+                "rules.ST10.msg",
+                vec![],
             )];
         }
 
@@ -89,10 +91,12 @@ fn check_binary_literal(code: &'static str, seg: &Segment) -> Option<LintViolati
     let right = non_trivia[2];
 
     if is_literal(left) && is_literal(right) {
-        return Some(LintViolation::new(
+        return Some(LintViolation::with_msg_key(
             code,
             "WHERE clause contains a constant expression.",
             seg.span(),
+            "rules.ST10.msg",
+            vec![],
         ));
     }
 

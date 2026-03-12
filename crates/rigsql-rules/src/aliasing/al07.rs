@@ -84,17 +84,21 @@ impl Rule for RuleAL07 {
 
         if let (Some(start), Some(end)) = (alias_start, alias_end) {
             let delete_span = start.merge(end);
-            vec![LintViolation::with_fix(
+            vec![LintViolation::with_fix_and_msg_key(
                 self.code(),
                 "Avoid using table aliases. Use the full table name instead.",
                 ctx.segment.span(),
                 vec![SourceEdit::delete(delete_span)],
+                "rules.AL07.msg",
+                vec![],
             )]
         } else {
-            vec![LintViolation::new(
+            vec![LintViolation::with_msg_key(
                 self.code(),
                 "Avoid using table aliases. Use the full table name instead.",
                 ctx.segment.span(),
+                "rules.AL07.msg",
+                vec![],
             )]
         }
     }

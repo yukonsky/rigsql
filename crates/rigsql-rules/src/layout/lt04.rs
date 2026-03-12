@@ -67,22 +67,26 @@ impl Rule for RuleLT04 {
             CommaStyle::Trailing => {
                 if is_leading_comma(ctx) {
                     let fixes = build_leading_to_trailing_fix(ctx);
-                    return vec![LintViolation::with_fix(
+                    return vec![LintViolation::with_fix_and_msg_key(
                         self.code(),
                         "Comma should be at the end of the line, not the start.",
                         span,
                         fixes,
+                        "rules.LT04.msg.trailing",
+                        vec![],
                     )];
                 }
             }
             CommaStyle::Leading => {
                 if is_trailing_comma(ctx) {
                     let fixes = build_trailing_to_leading_fix(ctx);
-                    return vec![LintViolation::with_fix(
+                    return vec![LintViolation::with_fix_and_msg_key(
                         self.code(),
                         "Comma should be at the start of the line, not the end.",
                         span,
                         fixes,
+                        "rules.LT04.msg.leading",
+                        vec![],
                     )];
                 }
             }

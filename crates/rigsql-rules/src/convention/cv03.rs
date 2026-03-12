@@ -46,11 +46,13 @@ impl Rule for RuleCV03 {
 
         if let Some(seg) = last_non_trivia {
             if seg.segment_type() == SegmentType::Comma {
-                return vec![LintViolation::with_fix(
+                return vec![LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Trailing comma found in SELECT clause.",
                     seg.span(),
                     vec![SourceEdit::delete(seg.span())],
+                    "rules.CV03.msg",
+                    vec![],
                 )];
             }
         }

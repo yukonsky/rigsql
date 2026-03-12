@@ -44,10 +44,12 @@ impl Rule for RuleCV02 {
         if let Some(Segment::Token(t)) = func_name {
             let name = t.token.text.as_str();
             if name.eq_ignore_ascii_case("IFNULL") || name.eq_ignore_ascii_case("NVL") {
-                return vec![LintViolation::new(
+                return vec![LintViolation::with_msg_key(
                     self.code(),
                     format!("Use COALESCE instead of '{}'.", name),
                     t.token.span,
+                    "rules.CV02.msg",
+                    vec![("name".to_string(), name.to_string())],
                 )];
             }
         }

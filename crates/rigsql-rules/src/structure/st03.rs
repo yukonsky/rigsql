@@ -63,10 +63,12 @@ impl Rule for RuleST03 {
             // Count occurrences - name appears at least once in its definition
             let count = raw.matches(name.as_str()).count();
             if count <= 1 {
-                violations.push(LintViolation::new(
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
                     format!("CTE '{}' is defined but not used.", name),
                     *span,
+                    "rules.ST03.msg",
+                    vec![("name".to_string(), name.to_string())],
                 ));
             }
         }

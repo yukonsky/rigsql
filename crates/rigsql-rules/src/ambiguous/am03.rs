@@ -65,10 +65,12 @@ impl Rule for RuleAM03 {
                 .zip(has_direction.iter())
                 .filter(|(_, &has)| !has)
                 .map(|(expr, _)| {
-                    LintViolation::new(
+                    LintViolation::with_msg_key(
                         self.code(),
                         "ORDER BY column without explicit ASC/DESC when other columns have one.",
                         expr.span(),
+                        "rules.AM03.msg",
+                        vec![],
                     )
                 })
                 .collect();

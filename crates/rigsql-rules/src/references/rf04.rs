@@ -101,10 +101,12 @@ impl Rule for RuleRF04 {
 
         let upper = t.token.text.to_ascii_uppercase();
         if RESERVED_KEYWORDS.contains(&upper.as_str()) {
-            vec![LintViolation::new(
+            vec![LintViolation::with_msg_key(
                 self.code(),
                 format!("Identifier '{}' is a reserved keyword.", t.token.text),
                 t.token.span,
+                "rules.RF04.msg",
+                vec![("name".to_string(), t.token.text.to_string())],
             )]
         } else {
             vec![]

@@ -48,13 +48,18 @@ impl Rule for RuleAL04 {
         for (name, span) in &aliases {
             let lower = name.to_lowercase();
             if let Some(first_span) = seen.get(&lower) {
-                violations.push(LintViolation::new(
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
                     format!(
                         "Duplicate table alias '{}'. First used at offset {}.",
                         name, first_span.start,
                     ),
                     *span,
+                    "rules.AL04.msg",
+                    vec![
+                        ("name".to_string(), name.to_string()),
+                        ("offset".to_string(), first_span.start.to_string()),
+                    ],
                 ));
             } else {
                 seen.insert(lower, *span);

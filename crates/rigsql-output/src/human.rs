@@ -29,16 +29,17 @@ impl HumanFormatter {
 
         for v in violations {
             let (line, col) = v.line_col(source);
+            let msg = rigsql_i18n::rule_message(&v.message_key, &v.message_params, &v.message);
 
             if self.use_color {
                 out.push_str(&format!(
                     "  \x1b[90mL{:>4}:{:<3}\x1b[0m | \x1b[33m{}\x1b[0m | {}\n",
-                    line, col, v.rule_code, v.message
+                    line, col, v.rule_code, msg
                 ));
             } else {
                 out.push_str(&format!(
                     "  L{:>4}:{:<3} | {} | {}\n",
-                    line, col, v.rule_code, v.message
+                    line, col, v.rule_code, msg
                 ));
             }
         }

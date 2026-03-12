@@ -53,10 +53,12 @@ impl Rule for RuleCV06 {
 
         if !has_semicolon {
             let span = ctx.segment.span();
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 "Statement is not terminated with a semicolon.",
                 rigsql_core::Span::new(span.end, span.end),
+                "rules.CV06.msg",
+                vec![],
             )];
         }
 

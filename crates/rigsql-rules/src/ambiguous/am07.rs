@@ -89,13 +89,18 @@ fn check_set_operations(segment: &Segment, violations: &mut Vec<LintViolation>) 
             let first_count = select_item_counts[0].1;
             for (span, count) in &select_item_counts[1..] {
                 if *count != first_count {
-                    violations.push(LintViolation::new(
+                    violations.push(LintViolation::with_msg_key(
                         "AM07",
                         format!(
                             "Set operation column count mismatch: expected {} but found {}.",
                             first_count, count
                         ),
                         *span,
+                        "rules.AM07.msg",
+                        vec![
+                            ("expected".to_string(), first_count.to_string()),
+                            ("found".to_string(), count.to_string()),
+                        ],
                     ));
                 }
             }
