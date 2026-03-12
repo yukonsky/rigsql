@@ -1,7 +1,7 @@
 use rigsql_core::SegmentType;
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::LintViolation;
+use crate::violation::{LintViolation, SourceEdit};
 
 /// LT09: Select targets should be on separate lines unless there is only one.
 #[derive(Debug, Default)]
@@ -58,10 +58,36 @@ impl Rule for RuleLT09 {
             .any(|c| c.segment_type() == SegmentType::Newline);
 
         if !has_newline_between_targets {
-            return vec![LintViolation::with_msg_key(
+            // Build fixes: replace whitespace after each comma with newline+indent
+            let mut fixes = Vec::new();
+            let indent = "    ";
+            for (i, child) in children.iter().enumerate() {
+                // After SELECT keyword, insert newline before first target
+                if child.segment_type() == SegmentType::Keyword && i + 1 < children.len() {
+                    let next = &children[i + 1];
+                    if next.segment_type() == SegmentType::Whitespace {
+                        fixes.push(SourceEdit::replace(next.span(), format!("\n{}", indent)));
+                    }
+                }
+                // After comma, replace whitespace with newline+indent
+                if child.segment_type() == SegmentType::Comma && i + 1 < children.len() {
+                    let next = &children[i + 1];
+                    if next.segment_type() == SegmentType::Whitespace {
+                        fixes.push(SourceEdit::replace(next.span(), format!("\n{}", indent)));
+                    } else {
+                        fixes.push(SourceEdit::insert(
+                            child.span().end,
+                            format!("\n{}", indent),
+                        ));
+                    }
+                }
+            }
+
+            return vec![LintViolation::with_fix_and_msg_key(
                 self.code(),
                 "Select targets should be on separate lines.",
                 ctx.segment.span(),
+                fixes,
                 "rules.LT09.msg",
                 vec![],
             )];
@@ -79,8 +105,10 @@ mod tests {
     #[test]
     fn test_lt09_flags_multiple_targets_single_line() {
         let violations = lint_sql("SELECT a, b, c FROM t", RuleLT09);
-        assert!(!violations.is_empty());
-        assert!(violations.iter().all(|v| v.rule_code == "LT09"));
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_code, "LT09");
+        // Should have fixes to insert newlines
+        assert!(!violations[0].fixes.is_empty());
     }
 
     #[test]
