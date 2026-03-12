@@ -17,10 +17,6 @@ use std::process;
 #[derive(Parser)]
 #[command(name = "rigsql", version, about = "Fast SQL linter written in Rust")]
 struct Cli {
-    /// Output locale (e.g. "en", "ja") — overrides config and system locale
-    #[arg(long, global = true)]
-    locale: Option<String>,
-
     #[command(subcommand)]
     command: Commands,
 }
