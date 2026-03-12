@@ -51,10 +51,12 @@ impl Rule for RuleST04 {
         });
 
         if found_nested {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 "Nested CASE expression found.",
                 ctx.segment.span(),
+                "rules.ST04.msg",
+                vec![],
             )];
         }
 

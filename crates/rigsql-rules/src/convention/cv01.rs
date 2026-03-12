@@ -73,19 +73,23 @@ impl Rule for RuleCV01 {
         let text = t.token.text.as_str();
         match self.preferred {
             NotEqualStyle::CStyle if text == "<>" => {
-                vec![LintViolation::with_fix(
+                vec![LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Use '!=' instead of '<>'.",
                     t.token.span,
                     vec![SourceEdit::replace(t.token.span, "!=")],
+                    "rules.CV01.msg.use_ne",
+                    vec![],
                 )]
             }
             NotEqualStyle::AnsiStyle if text == "!=" => {
-                vec![LintViolation::with_fix(
+                vec![LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Use '<>' instead of '!='.",
                     t.token.span,
                     vec![SourceEdit::replace(t.token.span, "<>")],
+                    "rules.CV01.msg.use_ltgt",
+                    vec![],
                 )]
             }
             _ => vec![],

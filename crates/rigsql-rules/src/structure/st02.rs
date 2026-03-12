@@ -71,17 +71,25 @@ impl Rule for RuleST02 {
                 || (is_falsy(then_val) && is_truthy(else_val));
 
             if is_bool_pair {
-                return vec![LintViolation::new(
+                return vec![LintViolation::with_msg_key(
                     self.code(),
                     "Unnecessary CASE expression. Use the boolean condition directly.",
                     ctx.segment.span(),
+                    "rules.ST02.msg.boolean",
+                    vec![],
                 )];
             }
         }
 
         // Pattern 2: IS NULL fallback (CASE WHEN x IS NULL THEN y ELSE x END)
         if let Some(msg) = check_is_null_coalesce_pattern(when_clause, else_clause) {
-            return vec![LintViolation::new(self.code(), msg, ctx.segment.span())];
+            return vec![LintViolation::with_msg_key(
+                self.code(),
+                msg,
+                ctx.segment.span(),
+                "rules.ST02.msg.coalesce",
+                vec![],
+            )];
         }
 
         vec![]

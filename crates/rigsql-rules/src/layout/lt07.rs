@@ -80,10 +80,12 @@ impl Rule for RuleLT07 {
         }
 
         if !found_newline {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 "Closing bracket of CTE should be on a new line.",
                 search_children[rparen_idx].span(),
+                "rules.LT07.msg",
+                vec![],
             )];
         }
 

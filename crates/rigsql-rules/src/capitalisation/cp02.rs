@@ -85,19 +85,24 @@ impl Rule for RuleCP02 {
         };
 
         if text != expected {
-            vec![LintViolation::with_fix(
+            let policy_name = match self.policy {
+                IdentifierPolicy::Lower => "lower",
+                IdentifierPolicy::Upper => "upper",
+                IdentifierPolicy::Consistent => "consistent",
+            };
+            vec![LintViolation::with_fix_and_msg_key(
                 self.code(),
                 format!(
                     "Unquoted identifiers must be {} case. Found '{}'.",
-                    match self.policy {
-                        IdentifierPolicy::Lower => "lower",
-                        IdentifierPolicy::Upper => "upper",
-                        IdentifierPolicy::Consistent => "consistent",
-                    },
-                    text
+                    policy_name, text
                 ),
                 t.token.span,
                 vec![SourceEdit::replace(t.token.span, expected.clone())],
+                "rules.CP02.msg",
+                vec![
+                    ("policy".to_string(), policy_name.to_string()),
+                    ("found".to_string(), text.to_string()),
+                ],
             )]
         } else {
             vec![]

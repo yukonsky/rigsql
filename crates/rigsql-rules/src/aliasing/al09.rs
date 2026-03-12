@@ -56,11 +56,13 @@ impl Rule for RuleAL09 {
             return vec![];
         }
 
-        vec![LintViolation::with_fix(
+        vec![LintViolation::with_fix_and_msg_key(
             self.code(),
             format!("Column '{}' is aliased to itself.", info.source_name),
             ctx.segment.span(),
             vec![SourceEdit::delete(info.remove_span)],
+            "rules.AL09.msg",
+            vec![("name".to_string(), info.source_name.clone())],
         )]
     }
 }

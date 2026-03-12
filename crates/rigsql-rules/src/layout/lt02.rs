@@ -76,16 +76,18 @@ impl Rule for RuleLT02 {
 
         // Flag tabs mixed with spaces
         if text.contains('\t') && text.contains(' ') {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 "Mixed tabs and spaces in indentation.",
                 t.token.span,
+                "rules.LT02.msg.mixed",
+                vec![],
             )];
         }
 
         // Flag non-multiple of indent_size (space-only indentation)
         if !text.contains('\t') && text.len() % self.indent_size != 0 {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 format!(
                     "Indentation is not a multiple of {} spaces (found {} spaces).",
@@ -93,6 +95,11 @@ impl Rule for RuleLT02 {
                     text.len()
                 ),
                 t.token.span,
+                "rules.LT02.msg.not_multiple",
+                vec![
+                    ("size".to_string(), self.indent_size.to_string()),
+                    ("found".to_string(), text.len().to_string()),
+                ],
             )];
         }
 

@@ -70,11 +70,16 @@ impl Rule for RuleLT15 {
                 let delete_start = spans[keep - 1].end;
                 let delete_end = spans.last().unwrap().end;
                 let delete_span = rigsql_core::Span::new(delete_start, delete_end);
-                violations.push(LintViolation::with_fix(
+                violations.push(LintViolation::with_fix_and_msg_key(
                     code,
                     format!("Too many blank lines ({}, max {}).", *consecutive - 1, max),
                     spans[0],
                     vec![SourceEdit::delete(delete_span)],
+                    "rules.LT15.msg",
+                    vec![
+                        ("count".to_string(), (*consecutive - 1).to_string()),
+                        ("max".to_string(), max.to_string()),
+                    ],
                 ));
             }
             *consecutive = 0;

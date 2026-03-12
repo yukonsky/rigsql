@@ -38,10 +38,12 @@ impl Rule for RuleST07 {
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
         for child in ctx.segment.children() {
             if child.segment_type() == SegmentType::UsingClause {
-                return vec![LintViolation::new(
+                return vec![LintViolation::with_msg_key(
                     self.code(),
                     "Prefer ON clause over USING clause in joins.",
                     child.span(),
+                    "rules.ST07.msg",
+                    vec![],
                 )];
             }
         }

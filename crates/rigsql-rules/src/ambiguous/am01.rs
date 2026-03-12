@@ -56,10 +56,12 @@ impl Rule for RuleAM01 {
         if let Some(select) = select_clause {
             let distinct_token = find_distinct_keyword(select);
             if let Some(span) = distinct_token {
-                return vec![LintViolation::new(
+                return vec![LintViolation::with_msg_key(
                     self.code(),
                     "DISTINCT is redundant when used with GROUP BY.",
                     span,
+                    "rules.AM01.msg",
+                    vec![],
                 )];
             }
         }

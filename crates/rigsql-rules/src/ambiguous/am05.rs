@@ -72,10 +72,12 @@ impl Rule for RuleAM05 {
             });
 
         if !has_qualifier {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 "JOIN without qualifier. Use INNER JOIN, LEFT JOIN, etc.",
                 join_kw.span(),
+                "rules.AM05.msg",
+                vec![],
             )];
         }
 

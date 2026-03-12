@@ -147,13 +147,15 @@ fn collect_unqualified_columns(
                     if t.token.kind == TokenKind::AtSign {
                         return;
                     }
-                    violations.push(LintViolation::new(
+                    violations.push(LintViolation::with_msg_key(
                         code,
                         format!(
                             "Unqualified column reference '{}' in multi-table query.",
                             t.token.text
                         ),
                         t.token.span,
+                        "rules.RF02.msg",
+                        vec![("name".to_string(), t.token.text.to_string())],
                     ));
                 }
             }
@@ -169,13 +171,15 @@ fn collect_unqualified_columns(
                 if let Segment::Token(t) = child {
                     // Skip TSQL variables (@var) — they're not column references
                     if t.token.kind != TokenKind::AtSign {
-                        violations.push(LintViolation::new(
+                        violations.push(LintViolation::with_msg_key(
                             code,
                             format!(
                                 "Unqualified column reference '{}' in multi-table query.",
                                 t.token.text
                             ),
                             t.token.span,
+                            "rules.RF02.msg",
+                            vec![("name".to_string(), t.token.text.to_string())],
                         ));
                     }
                 }

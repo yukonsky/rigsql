@@ -42,11 +42,13 @@ impl Rule for RuleAL01 {
             return vec![];
         }
 
-        vec![LintViolation::with_fix(
+        vec![LintViolation::with_fix_and_msg_key(
             self.code(),
             "Implicit aliasing not allowed. Use explicit AS keyword.",
             ctx.segment.span(),
             insert_as_keyword_fix(children),
+            "rules.AL01.msg",
+            vec![],
         )]
     }
 }

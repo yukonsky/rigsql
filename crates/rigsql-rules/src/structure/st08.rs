@@ -49,10 +49,12 @@ impl Rule for RuleST08 {
             if found_distinct {
                 // The next non-trivia after DISTINCT
                 if child.segment_type() == SegmentType::ParenExpression {
-                    return vec![LintViolation::new(
+                    return vec![LintViolation::with_msg_key(
                         self.code(),
                         "DISTINCT used with parentheses is misleading. DISTINCT is not a function.",
                         child.span(),
+                        "rules.ST08.msg",
+                        vec![],
                     )];
                 }
                 // If it's not a paren expression, stop looking

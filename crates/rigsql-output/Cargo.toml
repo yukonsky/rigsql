@@ -9,6 +9,7 @@ description = "Output formatters (human, JSON, SARIF) for the rigsql SQL linter"
 [dependencies]
 rigsql-core = { workspace = true }
 rigsql-rules = { workspace = true }
+rigsql-i18n = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 miette = { workspace = true }

@@ -45,11 +45,13 @@ impl Rule for RuleLT03 {
         if ctx.index_in_parent > 0 {
             let prev = &ctx.siblings[ctx.index_in_parent - 1];
             if prev.segment_type() != SegmentType::Whitespace {
-                violations.push(LintViolation::with_fix(
+                violations.push(LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Missing space before operator.",
                     span,
                     vec![SourceEdit::insert(span.start, " ")],
+                    "rules.LT03.msg.before",
+                    vec![],
                 ));
             }
         }
@@ -58,11 +60,13 @@ impl Rule for RuleLT03 {
         if ctx.index_in_parent + 1 < ctx.siblings.len() {
             let next = &ctx.siblings[ctx.index_in_parent + 1];
             if next.segment_type() != SegmentType::Whitespace {
-                violations.push(LintViolation::with_fix(
+                violations.push(LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Missing space after operator.",
                     span,
                     vec![SourceEdit::insert(span.end, " ")],
+                    "rules.LT03.msg.after",
+                    vec![],
                 ));
             }
         }

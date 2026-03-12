@@ -65,11 +65,13 @@ impl Rule for RuleRF06 {
         let is_simple = inner.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
 
         if is_simple {
-            vec![LintViolation::with_fix(
+            vec![LintViolation::with_fix_and_msg_key(
                 self.code(),
                 format!("Identifier '{}' does not need quoting.", text),
                 t.token.span,
                 vec![SourceEdit::replace(t.token.span, inner.to_string())],
+                "rules.RF06.msg",
+                vec![("name".to_string(), text.to_string())],
             )]
         } else {
             vec![]

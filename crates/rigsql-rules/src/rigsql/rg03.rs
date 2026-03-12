@@ -37,10 +37,12 @@ impl Rule for RuleRG03 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
-        vec![LintViolation::new(
+        vec![LintViolation::with_msg_key(
             self.code(),
             "Use of BETWEEN. Consider using >= and <= for explicit range boundaries.",
             ctx.segment.span(),
+            "rules.RG03.msg",
+            vec![],
         )]
     }
 }

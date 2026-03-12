@@ -70,24 +70,36 @@ impl Rule for RuleAL06 {
         let len = alias_name.len();
 
         if self.min_alias_length > 0 && len < self.min_alias_length {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 format!(
                     "Alias '{}' is too short ({} chars, minimum {}).",
                     alias_name, len, self.min_alias_length
                 ),
                 ctx.segment.span(),
+                "rules.AL06.msg.short",
+                vec![
+                    ("name".to_string(), alias_name.to_string()),
+                    ("length".to_string(), len.to_string()),
+                    ("min".to_string(), self.min_alias_length.to_string()),
+                ],
             )];
         }
 
         if self.max_alias_length > 0 && len > self.max_alias_length {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 format!(
                     "Alias '{}' is too long ({} chars, maximum {}).",
                     alias_name, len, self.max_alias_length
                 ),
                 ctx.segment.span(),
+                "rules.AL06.msg.long",
+                vec![
+                    ("name".to_string(), alias_name.to_string()),
+                    ("length".to_string(), len.to_string()),
+                    ("max".to_string(), self.max_alias_length.to_string()),
+                ],
             )];
         }
 

@@ -32,6 +32,10 @@ enum Commands {
         #[arg(long)]
         dialect: Option<DialectArg>,
 
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
+
         /// Output format
         #[arg(long, default_value = "tree")]
         format: ParseFormat,
@@ -45,6 +49,10 @@ enum Commands {
         /// SQL dialect [default: ansi] (overrides config file)
         #[arg(long)]
         dialect: Option<DialectArg>,
+
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
 
         /// Output format
         #[arg(long, default_value = "human")]
@@ -64,6 +72,10 @@ enum Commands {
         #[arg(long)]
         dialect: Option<DialectArg>,
 
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
+
         /// Don't write changes, just show what would be fixed
         #[arg(long)]
         dry_run: bool,
@@ -74,7 +86,11 @@ enum Commands {
     },
 
     /// List available lint rules
-    Rules,
+    Rules {
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
+    },
 
     /// Generate shell completions
     Completions {
@@ -130,6 +146,36 @@ fn resolve_dialect(cli_dialect: Option<DialectArg>, config: &Config) -> DialectK
     DialectKind::Ansi
 }
 
+/// Resolve the effective locale: CLI flag > config > system locale > "en".
+/// For machine-readable formats (JSON, SARIF, GitHub), always use "en".
+fn resolve_locale(cli_locale: Option<&str>, config: &Config, format: Option<LintFormat>) -> String {
+    // Machine-readable formats always use English
+    if matches!(
+        format,
+        Some(LintFormat::Json | LintFormat::Sarif | LintFormat::Github)
+    ) {
+        return "en".to_string();
+    }
+    // CLI flag takes precedence
+    if let Some(locale) = cli_locale {
+        return locale.to_string();
+    }
+    // Config file
+    if let Some(ref locale) = config.locale {
+        return locale.clone();
+    }
+    // System locale detection
+    sys_locale::get_locale()
+        .and_then(|l| {
+            if l.starts_with("ja") {
+                Some("ja".to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "en".to_string())
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -137,21 +183,27 @@ fn main() {
         Commands::Parse {
             file,
             dialect,
+            locale,
             format,
         } => {
             let config = Config::load_for_path(Path::new(&file));
             let dialect = resolve_dialect(dialect, &config);
+            let locale = resolve_locale(locale.as_deref(), &config, None);
+            rigsql_i18n::set_locale(&locale);
             cmd_parse(&file, dialect, format);
         }
 
         Commands::Lint {
             files,
             dialect,
+            locale,
             format,
             no_color,
         } => {
             let (rules, config) = build_rules(&files);
             let dialect = resolve_dialect(dialect, &config);
+            let locale = resolve_locale(locale.as_deref(), &config, Some(format));
+            rigsql_i18n::set_locale(&locale);
             let exit_code = cmd_lint(&files, dialect, format, no_color, rules);
             process::exit(exit_code);
         }
@@ -159,16 +211,24 @@ fn main() {
         Commands::Fix {
             files,
             dialect,
+            locale,
             dry_run,
             force,
         } => {
             let (rules, config) = build_rules(&files);
             let dialect = resolve_dialect(dialect, &config);
+            let locale = resolve_locale(locale.as_deref(), &config, None);
+            rigsql_i18n::set_locale(&locale);
             let exit_code = cmd_fix(&files, dialect, dry_run, force, rules);
             process::exit(exit_code);
         }
 
-        Commands::Rules => cmd_rules(),
+        Commands::Rules { locale } => {
+            let config = Config::default();
+            let locale = resolve_locale(locale.as_deref(), &config, None);
+            rigsql_i18n::set_locale(&locale);
+            cmd_rules();
+        }
 
         Commands::Completions { shell } => {
             clap_complete::generate(shell, &mut Cli::command(), "rigsql", &mut std::io::stdout());
@@ -244,7 +304,7 @@ fn cmd_lint(
 ) -> i32 {
     let sql_files = collect_sql_files(files);
     if sql_files.is_empty() {
-        eprintln!("No SQL files found.");
+        eprintln!("{}", rigsql_i18n::t("cli.no_sql_files"));
         return 2;
     }
 
@@ -365,7 +425,7 @@ fn cmd_fix(
 ) -> i32 {
     let sql_files = collect_sql_files(files);
     if sql_files.is_empty() {
-        eprintln!("No SQL files found.");
+        eprintln!("{}", rigsql_i18n::t("cli.no_sql_files"));
         return 2;
     }
     let dialect_str = dialect.as_str();
@@ -431,24 +491,30 @@ fn cmd_fix(
     for r in &results {
         total_fixed += r.fix_count;
         if dry_run {
-            println!("Would fix: {}", r.path.display());
+            let msg = rigsql_i18n::t("cli.would_fix");
+            println!("{}", msg.replace("%{path}", &r.path.display().to_string()));
         } else if let Err(e) = fs::write(&r.path, &r.fixed) {
             eprintln!("Error writing {}: {}", r.path.display(), e);
         } else {
-            println!("Fixed: {}", r.path.display());
+            let msg = rigsql_i18n::t("cli.fixed");
+            println!("{}", msg.replace("%{path}", &r.path.display().to_string()));
         }
     }
 
     if file_count == 0 {
-        eprintln!("No fixable violations found.");
+        eprintln!("{}", rigsql_i18n::t("cli.no_fixable"));
     } else {
-        eprintln!(
-            "{} {} in {} file{}.",
-            if dry_run { "Would apply" } else { "Applied" },
-            total_fixed,
-            file_count,
-            if file_count == 1 { "" } else { "s" },
-        );
+        let action = if dry_run {
+            rigsql_i18n::t("cli.would_apply")
+        } else {
+            rigsql_i18n::t("cli.applied")
+        };
+        let template = rigsql_i18n::t("cli.applied_fixes");
+        let msg = template
+            .replace("%{action}", &action)
+            .replace("%{count}", &total_fixed.to_string())
+            .replace("%{files}", &file_count.to_string());
+        eprintln!("{msg}");
     }
 
     0
@@ -456,15 +522,16 @@ fn cmd_fix(
 
 fn cmd_rules() {
     let rules = default_rules();
-    println!("{:<6} {:<30} Description", "Code", "Name");
+    let desc_header = if rigsql_i18n::get_locale() == "ja" {
+        "説明"
+    } else {
+        "Description"
+    };
+    println!("{:<6} {:<30} {}", "Code", "Name", desc_header);
     println!("{}", "-".repeat(80));
     for rule in &rules {
-        println!(
-            "{:<6} {:<30} {}",
-            rule.code(),
-            rule.name(),
-            rule.description()
-        );
+        let desc = rigsql_i18n::rule_description(rule.code(), rule.description());
+        println!("{:<6} {:<30} {}", rule.code(), rule.name(), desc);
     }
 }
 

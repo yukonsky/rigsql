@@ -90,11 +90,13 @@ impl Rule for RuleRF03 {
         unqualified
             .iter()
             .map(|span| {
-                LintViolation::new(
+                LintViolation::with_msg_key(
                     self.code(),
                     "Inconsistent column qualification. Mix of qualified and unqualified references."
                         .to_string(),
                     *span,
+                    "rules.RF03.msg",
+                    vec![],
                 )
             })
             .collect()

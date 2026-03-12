@@ -47,8 +47,12 @@ impl SourceEdit {
 pub struct LintViolation {
     /// Rule code, e.g. "CP01".
     pub rule_code: &'static str,
-    /// Human-readable message describing the violation.
+    /// Human-readable message describing the violation (English).
     pub message: String,
+    /// Translation key for the message (e.g. "rules.LT01.msg").
+    pub message_key: String,
+    /// Parameters for message interpolation (e.g. [("count", "3")]).
+    pub message_params: Vec<(String, String)>,
     /// Location in source.
     pub span: Span,
     /// Severity level.
@@ -59,9 +63,31 @@ pub struct LintViolation {
 
 impl LintViolation {
     pub fn new(rule_code: &'static str, message: impl Into<String>, span: Span) -> Self {
+        let message = message.into();
+        Self {
+            rule_code,
+            message_key: String::new(),
+            message_params: Vec::new(),
+            message,
+            span,
+            severity: Severity::Warning,
+            fixes: Vec::new(),
+        }
+    }
+
+    /// Create a violation with a translation key and parameters.
+    pub fn with_msg_key(
+        rule_code: &'static str,
+        message: impl Into<String>,
+        span: Span,
+        message_key: impl Into<String>,
+        message_params: Vec<(String, String)>,
+    ) -> Self {
         Self {
             rule_code,
             message: message.into(),
+            message_key: message_key.into(),
+            message_params,
             span,
             severity: Severity::Warning,
             fixes: Vec::new(),
@@ -75,9 +101,32 @@ impl LintViolation {
         span: Span,
         fixes: Vec<SourceEdit>,
     ) -> Self {
+        let message = message.into();
+        Self {
+            rule_code,
+            message_key: String::new(),
+            message_params: Vec::new(),
+            message,
+            span,
+            severity: Severity::Warning,
+            fixes,
+        }
+    }
+
+    /// Create a violation with a suggested fix, translation key, and parameters.
+    pub fn with_fix_and_msg_key(
+        rule_code: &'static str,
+        message: impl Into<String>,
+        span: Span,
+        fixes: Vec<SourceEdit>,
+        message_key: impl Into<String>,
+        message_params: Vec<(String, String)>,
+    ) -> Self {
         Self {
             rule_code,
             message: message.into(),
+            message_key: message_key.into(),
+            message_params,
             span,
             severity: Severity::Warning,
             fixes,

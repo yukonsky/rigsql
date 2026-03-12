@@ -62,10 +62,12 @@ impl Rule for RuleCV12 {
         }
 
         // FROM has comma-separated tables + WHERE exists → implicit join
-        vec![LintViolation::new(
+        vec![LintViolation::with_msg_key(
             self.code(),
             "Use explicit JOIN … ON … instead of comma-separated tables with WHERE.",
             where_seg.span(),
+            "rules.CV12.msg",
+            vec![],
         )]
     }
 }

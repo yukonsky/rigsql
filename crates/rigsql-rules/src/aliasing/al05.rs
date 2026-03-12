@@ -64,10 +64,12 @@ impl Rule for RuleAL05 {
             let count = raw.matches(name.as_str()).count();
             // The name appears at least once in its own definition, so if count <= 1, unused
             if count <= 1 {
-                violations.push(LintViolation::new(
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
                     format!("CTE '{}' is defined but not used.", name),
                     *span,
+                    "rules.AL05.msg",
+                    vec![("name".to_string(), name.to_string())],
                 ));
             }
         }

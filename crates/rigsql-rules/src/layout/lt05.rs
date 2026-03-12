@@ -59,13 +59,18 @@ impl Rule for RuleLT05 {
             let line_len = line.len();
             if line_len > self.max_line_length {
                 let span = rigsql_core::Span::new(offset as u32, (offset + line_len) as u32);
-                violations.push(LintViolation::new(
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
                     format!(
                         "Line is too long ({} > {} characters).",
                         line_len, self.max_line_length
                     ),
                     span,
+                    "rules.LT05.msg",
+                    vec![
+                        ("length".to_string(), line_len.to_string()),
+                        ("max".to_string(), self.max_line_length.to_string()),
+                    ],
                 ));
             }
             offset += line_len + 1; // +1 for \n

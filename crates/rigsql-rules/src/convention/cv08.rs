@@ -44,10 +44,12 @@ impl Rule for RuleCV08 {
                 if t.segment_type == SegmentType::Keyword
                     && t.token.text.eq_ignore_ascii_case("RIGHT")
                 {
-                    return vec![LintViolation::new(
+                    return vec![LintViolation::with_msg_key(
                         self.code(),
                         "Use LEFT JOIN instead of RIGHT JOIN.",
                         t.token.span,
+                        "rules.CV08.msg",
+                        vec![],
                     )];
                 }
             }

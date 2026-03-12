@@ -79,22 +79,26 @@ impl Rule for RuleCV10 {
                 let inner = &text[1..text.len() - 1];
                 let replaced = inner.replace('\'', "''").replace("\"\"", "\"");
                 let new_text = format!("'{}'", replaced);
-                vec![LintViolation::with_fix(
+                vec![LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Use single quotes for string literals.",
                     t.token.span,
                     vec![SourceEdit::replace(t.token.span, new_text)],
+                    "rules.CV10.msg.single",
+                    vec![],
                 )]
             }
             QuoteStyle::Double if uses_single => {
                 let inner = &text[1..text.len() - 1];
                 let replaced = inner.replace('"', "\"\"").replace("''", "'");
                 let new_text = format!("\"{}\"", replaced);
-                vec![LintViolation::with_fix(
+                vec![LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Use double quotes for string literals.",
                     t.token.span,
                     vec![SourceEdit::replace(t.token.span, new_text)],
+                    "rules.CV10.msg.double",
+                    vec![],
                 )]
             }
             _ => vec![],

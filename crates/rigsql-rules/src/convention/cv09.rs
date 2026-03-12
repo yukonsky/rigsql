@@ -57,10 +57,12 @@ impl Rule for RuleCV09 {
 
         let word = t.token.text.to_lowercase();
         if self.blocked_words.contains(&word) {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 format!("Identifier '{}' is a blocked word.", t.token.text),
                 t.token.span,
+                "rules.CV09.msg",
+                vec![("name".to_string(), t.token.text.to_string())],
             )];
         }
 

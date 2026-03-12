@@ -40,10 +40,12 @@ impl Rule for RuleST05 {
 
         ctx.segment.walk(&mut |seg| {
             if seg.segment_type() == SegmentType::Subquery {
-                violations.push(LintViolation::new(
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
                     "Use a CTE instead of a derived table (subquery in FROM).",
                     seg.span(),
+                    "rules.ST05.msg",
+                    vec![],
                 ));
             }
         });

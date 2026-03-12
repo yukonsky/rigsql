@@ -55,10 +55,12 @@ fn check_subqueries_have_alias(
 
         // A bare Subquery (not wrapped in AliasExpression) lacks an alias
         if st == SegmentType::Subquery {
-            violations.push(LintViolation::new(
+            violations.push(LintViolation::with_msg_key(
                 code,
                 "Subquery in FROM/JOIN clause should have an alias.",
                 child.span(),
+                "rules.RG05.msg",
+                vec![],
             ));
             continue;
         }

@@ -53,11 +53,13 @@ impl Rule for RuleST01 {
                     && non_trivia[0].segment_type() == SegmentType::Keyword
                     && non_trivia[1].segment_type() == SegmentType::NullLiteral
                 {
-                    return vec![LintViolation::with_fix(
+                    return vec![LintViolation::with_fix_and_msg_key(
                         self.code(),
                         "Redundant ELSE NULL in CASE expression.",
                         child.span(),
                         vec![SourceEdit::delete(child.span())],
+                        "rules.ST01.msg",
+                        vec![],
                     )];
                 }
             }
