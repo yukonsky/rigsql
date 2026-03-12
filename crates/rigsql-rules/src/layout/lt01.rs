@@ -55,11 +55,13 @@ impl Rule for RuleLT01 {
                 return vec![];
             }
 
-            return vec![LintViolation::with_fix(
+            return vec![LintViolation::with_fix_and_msg_key(
                 self.code(),
                 format!("Expected single space, found {} spaces.", text.len()),
                 t.token.span,
                 vec![SourceEdit::replace(t.token.span, " ")],
+                "rules.LT01.msg",
+                vec![("count".to_string(), text.len().to_string())],
             )];
         }
 
