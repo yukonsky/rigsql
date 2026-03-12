@@ -18,6 +18,8 @@ pub enum ConfigError {
 pub struct Config {
     /// SQL dialect name (e.g. "ansi", "tsql", "postgres").
     pub dialect: Option<String>,
+    /// Locale for output messages (e.g. "en", "ja").
+    pub locale: Option<String>,
     /// Maximum line length for LT05.
     pub max_line_length: Option<usize>,
     /// Exclude rules (comma-separated codes).
@@ -85,6 +87,9 @@ impl Config {
     fn merge(&mut self, other: Config) {
         if other.dialect.is_some() {
             self.dialect = other.dialect;
+        }
+        if other.locale.is_some() {
+            self.locale = other.locale;
         }
         if other.max_line_length.is_some() {
             self.max_line_length = other.max_line_length;
@@ -162,6 +167,9 @@ fn parse_rigsql_toml(path: &Path) -> Result<Config, ConfigError> {
         if let Some(dialect) = core.get("dialect").and_then(|v| v.as_str()) {
             config.dialect = Some(dialect.to_string());
         }
+        if let Some(locale) = core.get("locale").and_then(|v| v.as_str()) {
+            config.locale = Some(locale.to_string());
+        }
         if let Some(len) = core.get("max_line_length").and_then(|v| v.as_integer()) {
             config.max_line_length = Some(len as usize);
         }
@@ -230,6 +238,7 @@ fn parse_sqlfluff_file(path: &Path) -> Result<Config, ConfigError> {
             match current_section.as_str() {
                 "sqlfluff" => match key.as_str() {
                     "dialect" => config.dialect = Some(value),
+                    "locale" => config.locale = Some(value),
                     "max_line_length" => {
                         config.max_line_length = value.parse().ok();
                     }

@@ -18,6 +18,7 @@ rigsql-dialects = { workspace = true }
 rigsql-rules = { workspace = true }
 rigsql-config = { workspace = true }
 rigsql-output = { workspace = true }
+rigsql-i18n = { workspace = true }
 clap = { workspace = true }
 clap_complete = { workspace = true }
 miette = { workspace = true }
@@ -25,3 +26,4 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 rayon = { workspace = true }
 ignore = { workspace = true }
+sys-locale = { workspace = true }

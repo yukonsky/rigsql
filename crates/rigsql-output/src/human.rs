@@ -54,18 +54,20 @@ impl HumanFormatter {
         total_violations: usize,
     ) -> String {
         let status = if total_violations == 0 {
+            let msg = rigsql_i18n::t("cli.all_checks_passed");
             if self.use_color {
-                "\x1b[32mAll checks passed!\x1b[0m".to_string()
+                format!("\x1b[32m{msg}\x1b[0m")
             } else {
-                "All checks passed!".to_string()
+                msg
             }
         } else {
-            let msg = format!(
-                "Found {} violation(s) in {} file(s) ({} file(s) scanned).",
-                total_violations, files_with_violations, total_files
-            );
+            let template = rigsql_i18n::t("cli.found_violations");
+            let msg = template
+                .replace("%{violations}", &total_violations.to_string())
+                .replace("%{files_with}", &files_with_violations.to_string())
+                .replace("%{total}", &total_files.to_string());
             if self.use_color {
-                format!("\x1b[31m{}\x1b[0m", msg)
+                format!("\x1b[31m{msg}\x1b[0m")
             } else {
                 msg
             }
