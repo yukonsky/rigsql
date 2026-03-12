@@ -10,6 +10,7 @@ Fast SQL linter written in Rust. sqlfluff-compatible rule codes with AI-friendly
 - 75 rules across 9 categories: Capitalisation, Layout, Convention, Aliasing, Ambiguous, References, Structure, TSQL, Rigsql
 - AI-friendly JSON output with rule explanations, context, and source lines
 - Multi-dialect support: ANSI, PostgreSQL, SQL Server (TSQL)
+- i18n support — violation messages in English and Japanese (`--locale en|ja`)
 - Auto-fix for many rules (`rigsql fix`)
 - Parallel file processing via rayon
 - Configuration via `rigsql.toml` or `.sqlfluff` (compatible)
@@ -44,6 +45,9 @@ rigsql lint ./queries/
 
 # Lint with SQL Server dialect
 rigsql lint ./queries/ --dialect tsql
+
+# Lint with Japanese violation messages
+rigsql lint ./queries/ --locale ja
 
 # Auto-fix violations
 rigsql fix ./queries/
@@ -87,6 +91,7 @@ Arguments:
 
 Options:
   --dialect <DIALECT>  SQL dialect [default: ansi] [possible values: ansi, postgres, tsql]
+  --locale <LOCALE>    Output locale (e.g. "en", "ja") — overrides config and system locale
   --format <FORMAT>    Output format [default: human] [possible values: human, json, sarif, github]
   --no-color           Disable colored output
 ```
@@ -101,6 +106,7 @@ Arguments:
 
 Options:
   --dialect <DIALECT>  SQL dialect [default: ansi] [possible values: ansi, postgres, tsql]
+  --locale <LOCALE>    Output locale (e.g. "en", "ja") — overrides config and system locale
   --dry-run            Don't write changes, just show what would be fixed
   -f, --force          Skip confirmation prompt
 ```
@@ -316,7 +322,7 @@ Found 5 violation(s) in 1 file(s) (1 file(s) scanned).
   "version": "1.0",
   "tool": {
     "name": "rigsql",
-    "version": "0.4.1"
+    "version": "0.5.0"
   },
   "summary": {
     "files_scanned": 1,
@@ -349,7 +355,7 @@ Found 5 violation(s) in 1 file(s) (1 file(s) scanned).
 ## GitHub Action
 
 ```yaml
-- uses: yukonsky/rigsql@v0.4.1
+- uses: yukonsky/rigsql@v0.5.0
   with:
     paths: "./queries/"
     dialect: "ansi"
@@ -375,6 +381,7 @@ crates/
   rigsql-rules/     # All lint rules (CP, LT, CV, AL, AM, RF, ST, TQ, RG)
   rigsql-config/    # Configuration loading (.sqlfluff, rigsql.toml)
   rigsql-output/    # Human, JSON, SARIF, GitHub Annotation formatters
+  rigsql-i18n/      # Internationalization (en, ja locale files)
   rigsql-cli/       # CLI binary
 ```
 
