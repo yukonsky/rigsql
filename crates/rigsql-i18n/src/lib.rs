@@ -77,7 +77,6 @@ fn translate_param_value(value: &str) -> String {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

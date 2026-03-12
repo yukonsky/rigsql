@@ -195,6 +195,7 @@ rules.CP05.msg: "%{category}は%{policy}にする必要があります。'%{foun
 
 # LT ルール
 rules.LT01.msg: "単一スペースが必要ですが、%{count}個のスペースが見つかりました。"
+rules.LT01.msg.trailing: "行末に余分な空白があります。"
 rules.LT02.msg.mixed: "インデントにタブとスペースが混在しています。"
 rules.LT02.msg.not_multiple: "インデントが%{size}スペースの倍数ではありません（%{found}スペース）。"
 rules.LT03.msg.before: "演算子の前にスペースがありません。"
