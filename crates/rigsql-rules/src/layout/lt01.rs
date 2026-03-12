@@ -57,11 +57,13 @@ impl Rule for RuleLT01 {
 
         let text = t.token.text.as_str();
 
-        // Check if this is trailing whitespace (next sibling is Newline or this is last sibling)
+        // Check if this is trailing whitespace (next sibling is explicitly a Newline).
+        // When the whitespace is the last sibling, it may be at a node boundary
+        // (e.g. space between two statements in the same line) — NOT trailing.
         let is_trailing = if ctx.index_in_parent + 1 < ctx.siblings.len() {
             ctx.siblings[ctx.index_in_parent + 1].segment_type() == SegmentType::Newline
         } else {
-            true
+            false
         };
 
         if is_trailing {
