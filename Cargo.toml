@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 rust-version = "1.75"
 license = "MIT"
@@ -24,14 +24,14 @@ keywords = ["sql", "linter", "sqlfluff", "tsql", "postgres"]
 
 [workspace.dependencies]
 # Internal crates
-rigsql-core = { path = "crates/rigsql-core", version = "0.5.1" }
-rigsql-lexer = { path = "crates/rigsql-lexer", version = "0.5.1" }
-rigsql-parser = { path = "crates/rigsql-parser", version = "0.5.1" }
-rigsql-dialects = { path = "crates/rigsql-dialects", version = "0.5.1" }
-rigsql-rules = { path = "crates/rigsql-rules", version = "0.5.1" }
-rigsql-config = { path = "crates/rigsql-config", version = "0.5.1" }
-rigsql-output = { path = "crates/rigsql-output", version = "0.5.1" }
-rigsql-i18n = { path = "crates/rigsql-i18n", version = "0.5.1" }
+rigsql-core = { path = "crates/rigsql-core", version = "0.5.2" }
+rigsql-lexer = { path = "crates/rigsql-lexer", version = "0.5.2" }
+rigsql-parser = { path = "crates/rigsql-parser", version = "0.5.2" }
+rigsql-dialects = { path = "crates/rigsql-dialects", version = "0.5.2" }
+rigsql-rules = { path = "crates/rigsql-rules", version = "0.5.2" }
+rigsql-config = { path = "crates/rigsql-config", version = "0.5.2" }
+rigsql-output = { path = "crates/rigsql-output", version = "0.5.2" }
+rigsql-i18n = { path = "crates/rigsql-i18n", version = "0.5.2" }
 
 # External dependencies
 clap = { version = "4", features = ["derive"] }

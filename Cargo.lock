@@ -635,7 +635,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "rigsql-cli"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "clap",
  "clap_complete",
@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "rigsql-config"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "rigsql-core",
  "rigsql-rules",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "rigsql-core"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "serde",
  "smol_str",
@@ -677,7 +677,7 @@ dependencies = [
 
 [[package]]
 name = "rigsql-dialects"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "rigsql-core",
  "rigsql-lexer",
@@ -687,14 +687,14 @@ dependencies = [
 
 [[package]]
 name = "rigsql-i18n"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "rust-i18n",
 ]
 
 [[package]]
 name = "rigsql-lexer"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "insta",
  "rigsql-core",
@@ -704,7 +704,7 @@ dependencies = [
 
 [[package]]
 name = "rigsql-output"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "miette",
  "rigsql-core",
@@ -716,7 +716,7 @@ dependencies = [
 
 [[package]]
 name = "rigsql-parser"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "insta",
  "rigsql-core",
@@ -727,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "rigsql-rules"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "insta",
  "rigsql-core",

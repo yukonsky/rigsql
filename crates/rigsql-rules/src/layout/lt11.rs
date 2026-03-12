@@ -111,7 +111,11 @@ fn check_adjacent_newline(tokens: &[TokenSegment], idx: usize, dir: Direction) -
         if tokens[j].segment_type == SegmentType::Newline {
             return true;
         }
-        if tokens[j].segment_type != SegmentType::Whitespace {
+        // Skip whitespace and comments (e.g., `UNION -- noqa: AM02\n` should be OK)
+        if tokens[j].segment_type != SegmentType::Whitespace
+            && tokens[j].segment_type != SegmentType::LineComment
+            && tokens[j].segment_type != SegmentType::BlockComment
+        {
             return false;
         }
         j = match dir {
@@ -154,6 +158,20 @@ mod tests {
     #[test]
     fn test_lt11_accepts_newlines() {
         let violations = lint_sql("SELECT 1\nUNION\nSELECT 2", RuleLT11);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt11_accepts_union_with_trailing_comment() {
+        // UNION followed by a line comment and then a newline should be OK
+        let violations = lint_sql("SELECT 1\nUNION -- noqa: AM02\nSELECT 2", RuleLT11);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt11_accepts_union_with_leading_comment() {
+        // Comment before UNION on a separate line
+        let violations = lint_sql("SELECT 1\n-- comment\nUNION\nSELECT 2", RuleLT11);
         assert_eq!(violations.len(), 0);
     }
 }
