@@ -23,7 +23,7 @@ impl RuleLT02 {
         if value == 0 {
             self.indent_size
         } else {
-            ((value + self.indent_size - 1) / self.indent_size) * self.indent_size
+            value.div_ceil(self.indent_size) * self.indent_size
         }
     }
 }
