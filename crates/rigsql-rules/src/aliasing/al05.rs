@@ -52,9 +52,10 @@ impl Rule for RuleAL05 {
             return vec![];
         }
 
-        // Get the full source text of the statement (parent or root)
-        let statement = ctx.parent.unwrap_or(ctx.root);
-        let raw = statement.raw().to_lowercase();
+        // Search the root (File) for references, not just the parent statement.
+        // When parsing partially fails, references may end up in sibling Unparsable
+        // segments outside the parent SelectStatement.
+        let raw = ctx.root.raw().to_lowercase();
 
         let mut violations = Vec::new();
         for (name, span) in &cte_names {
@@ -63,10 +64,12 @@ impl Rule for RuleAL05 {
             let count = raw.matches(name.as_str()).count();
             // The name appears at least once in its own definition, so if count <= 1, unused
             if count <= 1 {
-                violations.push(LintViolation::new(
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
                     format!("CTE '{}' is defined but not used.", name),
                     *span,
+                    "rules.AL05.msg",
+                    vec![("name".to_string(), name.to_string())],
                 ));
             }
         }
@@ -90,4 +93,25 @@ fn extract_cte_name(cte_def: &Segment) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al05_flags_unused_cte() {
+        let violations = lint_sql(
+            "WITH unused AS (SELECT 1) SELECT * FROM other_table",
+            RuleAL05,
+        );
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al05_accepts_used_cte() {
+        let violations = lint_sql("WITH cte AS (SELECT 1) SELECT * FROM cte", RuleAL05);
+        assert_eq!(violations.len(), 0);
+    }
 }

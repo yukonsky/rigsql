@@ -1,28 +1,35 @@
-use rigsql_core::{Segment, SegmentType};
+use rigsql_core::SegmentType;
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::LintViolation;
+use crate::violation::{LintViolation, SourceEdit};
 
-/// LT15: DISTINCT should not be followed by a bracket/parenthesis.
+/// LT15: Too many consecutive blank lines.
 ///
-/// `SELECT DISTINCT(col)` should be `SELECT DISTINCT col`.
-#[derive(Debug, Default)]
-pub struct RuleLT15;
+/// Files should not have more than max_blank_lines consecutive blank lines.
+#[derive(Debug)]
+pub struct RuleLT15 {
+    pub max_blank_lines: usize,
+}
+
+impl Default for RuleLT15 {
+    fn default() -> Self {
+        Self { max_blank_lines: 1 }
+    }
+}
 
 impl Rule for RuleLT15 {
     fn code(&self) -> &'static str {
         "LT15"
     }
     fn name(&self) -> &'static str {
-        "layout.distinct"
+        "layout.newlines"
     }
     fn description(&self) -> &'static str {
-        "DISTINCT used with parentheses."
+        "Too many consecutive blank lines."
     }
     fn explanation(&self) -> &'static str {
-        "DISTINCT is not a function and should not be used with parentheses. \
-         'SELECT DISTINCT(col)' is misleading because the parentheses don't do anything. \
-         Write 'SELECT DISTINCT col' instead."
+        "Files should not contain too many consecutive blank lines. Multiple \
+         blank lines waste vertical space and reduce readability."
     }
     fn groups(&self) -> &[RuleGroup] {
         &[RuleGroup::Layout]
@@ -31,39 +38,94 @@ impl Rule for RuleLT15 {
         true
     }
 
+    fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
+        if let Some(val) = settings.get("max_blank_lines") {
+            if let Ok(n) = val.parse() {
+                self.max_blank_lines = n;
+            }
+        }
+    }
+
     fn crawl_type(&self) -> CrawlType {
-        CrawlType::Segment(vec![SegmentType::SelectClause])
+        CrawlType::RootOnly
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
-        let children = ctx.segment.children();
+        let mut violations = Vec::new();
+        let mut consecutive_newlines = 0usize;
+        let mut newline_spans: Vec<rigsql_core::Span> = Vec::new();
 
-        // Find DISTINCT keyword
-        for (i, child) in children.iter().enumerate() {
-            if let Segment::Token(t) = child {
-                if t.segment_type == SegmentType::Keyword
-                    && t.token.text.eq_ignore_ascii_case("DISTINCT")
-                {
-                    // Check if next non-trivia is LParen
-                    for next in &children[i + 1..] {
-                        if next.segment_type().is_trivia() {
-                            continue;
-                        }
-                        if next.segment_type() == SegmentType::LParen
-                            || next.segment_type() == SegmentType::ParenExpression
-                        {
-                            return vec![LintViolation::new(
-                                self.code(),
-                                "DISTINCT should not be followed by parentheses.",
-                                t.token.span,
-                            )];
-                        }
-                        break;
-                    }
-                }
+        let max = self.max_blank_lines;
+        let code = self.code();
+
+        let flush = |consecutive: &mut usize,
+                     spans: &mut Vec<rigsql_core::Span>,
+                     violations: &mut Vec<LintViolation>| {
+            // N consecutive newlines = N-1 blank lines
+            if *consecutive > max + 1 {
+                let keep = max + 1; // keep this many newlines
+                                    // Delete from right after the last kept newline to the end of the
+                                    // last excess newline. This captures any whitespace-only content on
+                                    // blank lines between them, preventing leftover indent.
+                let delete_start = spans[keep - 1].end;
+                let delete_end = spans.last().unwrap().end;
+                let delete_span = rigsql_core::Span::new(delete_start, delete_end);
+                violations.push(LintViolation::with_fix_and_msg_key(
+                    code,
+                    format!("Too many blank lines ({}, max {}).", *consecutive - 1, max),
+                    spans[0],
+                    vec![SourceEdit::delete(delete_span)],
+                    "rules.LT15.msg",
+                    vec![
+                        ("count".to_string(), (*consecutive - 1).to_string()),
+                        ("max".to_string(), max.to_string()),
+                    ],
+                ));
             }
-        }
+            *consecutive = 0;
+            spans.clear();
+        };
 
-        vec![]
+        ctx.root.walk(&mut |seg| {
+            if seg.segment_type() == SegmentType::Newline {
+                consecutive_newlines += 1;
+                newline_spans.push(seg.span());
+            } else if seg.segment_type() == SegmentType::Whitespace {
+                // Whitespace between newlines doesn't reset the count
+            } else if seg.children().is_empty() {
+                flush(
+                    &mut consecutive_newlines,
+                    &mut newline_spans,
+                    &mut violations,
+                );
+            }
+        });
+
+        // Check trailing newlines
+        flush(
+            &mut consecutive_newlines,
+            &mut newline_spans,
+            &mut violations,
+        );
+
+        violations
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt15_accepts_single_blank_line() {
+        let violations = lint_sql("SELECT 1;\n\nSELECT 2;\n", RuleLT15::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt15_accepts_no_blank_lines() {
+        let violations = lint_sql("SELECT 1;\n", RuleLT15::default());
+        assert_eq!(violations.len(), 0);
     }
 }

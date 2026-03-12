@@ -85,22 +85,66 @@ impl Rule for RuleCP02 {
         };
 
         if text != expected {
-            vec![LintViolation::with_fix(
+            let policy_name = match self.policy {
+                IdentifierPolicy::Lower => "lower",
+                IdentifierPolicy::Upper => "upper",
+                IdentifierPolicy::Consistent => "consistent",
+            };
+            vec![LintViolation::with_fix_and_msg_key(
                 self.code(),
                 format!(
                     "Unquoted identifiers must be {} case. Found '{}'.",
-                    match self.policy {
-                        IdentifierPolicy::Lower => "lower",
-                        IdentifierPolicy::Upper => "upper",
-                        IdentifierPolicy::Consistent => "consistent",
-                    },
-                    text
+                    policy_name, text
                 ),
                 t.token.span,
                 vec![SourceEdit::replace(t.token.span, expected.clone())],
+                "rules.CP02.msg",
+                vec![
+                    ("policy".to_string(), policy_name.to_string()),
+                    ("found".to_string(), text.to_string()),
+                ],
             )]
         } else {
             vec![]
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cp02_consistent_default_no_violation() {
+        let violations = lint_sql("SELECT Users FROM t", RuleCP02::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp02_lower_policy_flags_upper() {
+        let rule = RuleCP02 {
+            policy: IdentifierPolicy::Lower,
+        };
+        let violations = lint_sql("SELECT Users FROM t", rule);
+        assert!(!violations.is_empty());
+    }
+
+    #[test]
+    fn test_cp02_skips_keywords() {
+        let rule = RuleCP02 {
+            policy: IdentifierPolicy::Lower,
+        };
+        let violations = lint_sql("SELECT id FROM users", rule);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp02_skips_function_parent() {
+        let rule = RuleCP02 {
+            policy: IdentifierPolicy::Lower,
+        };
+        let violations = lint_sql("SELECT COUNT(id) FROM users", rule);
+        assert_eq!(violations.len(), 0);
     }
 }

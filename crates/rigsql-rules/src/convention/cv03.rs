@@ -15,7 +15,7 @@ impl Rule for RuleCV03 {
         "CV03"
     }
     fn name(&self) -> &'static str {
-        "convention.trailing_comma_select"
+        "convention.select_trailing_comma"
     }
     fn description(&self) -> &'static str {
         "Trailing comma in SELECT clause."
@@ -46,15 +46,35 @@ impl Rule for RuleCV03 {
 
         if let Some(seg) = last_non_trivia {
             if seg.segment_type() == SegmentType::Comma {
-                return vec![LintViolation::with_fix(
+                return vec![LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Trailing comma found in SELECT clause.",
                     seg.span(),
                     vec![SourceEdit::delete(seg.span())],
+                    "rules.CV03.msg",
+                    vec![],
                 )];
             }
         }
 
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv03_flags_trailing_comma() {
+        let violations = lint_sql("SELECT a, b,", RuleCV03);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv03_accepts_no_trailing_comma() {
+        let violations = lint_sql("SELECT a, b FROM t", RuleCV03);
+        assert_eq!(violations.len(), 0);
     }
 }

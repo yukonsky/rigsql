@@ -165,6 +165,16 @@ impl<'a> Lexer<'a> {
             // Bracket-quoted identifier: [name] (SQL Server)
             b'[' if self.config.bracket_identifiers => self.lex_bracket_identifier(start),
 
+            // Array subscript brackets (PostgreSQL)
+            b'[' => {
+                self.pos += 1;
+                Ok(self.make_token(TokenKind::LBracket, start))
+            }
+            b']' => {
+                self.pos += 1;
+                Ok(self.make_token(TokenKind::RBracket, start))
+            }
+
             // Backtick identifier: `name` (MySQL)
             b'`' if self.config.backtick_identifiers => self.lex_quoted_identifier(start, b'`'),
 
@@ -327,6 +337,11 @@ impl<'a> Lexer<'a> {
                     self.pos += 1;
                 }
                 self.eat_word_chars();
+                // N'...' is a Unicode/NVARCHAR string literal prefix
+                let word = &self.source[start..self.pos];
+                if word.eq_ignore_ascii_case("N") && self.peek() == Some(b'\'') {
+                    return self.lex_string_literal(start);
+                }
                 Ok(self.make_token(TokenKind::Word, start))
             }
 

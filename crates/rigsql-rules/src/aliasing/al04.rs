@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use rigsql_core::{Segment, SegmentType};
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
+use crate::utils::extract_alias_name;
 use crate::violation::LintViolation;
 
 /// AL04: Table aliases should be unique within a statement.
@@ -14,7 +17,7 @@ impl Rule for RuleAL04 {
         "AL04"
     }
     fn name(&self) -> &'static str {
-        "aliasing.unique_table"
+        "aliasing.unique.table"
     }
     fn description(&self) -> &'static str {
         "Table aliases should be unique within a statement."
@@ -40,21 +43,26 @@ impl Rule for RuleAL04 {
         collect_table_aliases(ctx.segment, &mut aliases);
 
         let mut violations = Vec::new();
-        let mut seen: Vec<(String, rigsql_core::Span)> = Vec::new();
+        let mut seen: HashMap<String, rigsql_core::Span> = HashMap::new();
 
         for (name, span) in &aliases {
             let lower = name.to_lowercase();
-            if let Some((_, first_span)) = seen.iter().find(|(n, _)| *n == lower) {
-                violations.push(LintViolation::new(
+            if let Some(first_span) = seen.get(&lower) {
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
                     format!(
                         "Duplicate table alias '{}'. First used at offset {}.",
                         name, first_span.start,
                     ),
                     *span,
+                    "rules.AL04.msg",
+                    vec![
+                        ("name".to_string(), name.to_string()),
+                        ("offset".to_string(), first_span.start.to_string()),
+                    ],
                 ));
             } else {
-                seen.push((lower, *span));
+                seen.insert(lower, *span);
             }
         }
 
@@ -89,7 +97,7 @@ fn collect_table_aliases(segment: &Segment, aliases: &mut Vec<(String, rigsql_co
 /// Find AliasExpression nodes and extract the alias name (last identifier).
 fn find_alias_names(segment: &Segment, aliases: &mut Vec<(String, rigsql_core::Span)>) {
     if segment.segment_type() == SegmentType::AliasExpression {
-        if let Some(name) = extract_alias_name(segment) {
+        if let Some(name) = extract_alias_name(segment.children()) {
             aliases.push((name, segment.span()));
         }
         return;
@@ -105,26 +113,26 @@ fn find_alias_names(segment: &Segment, aliases: &mut Vec<(String, rigsql_core::S
     }
 }
 
-/// Extract the alias name from an AliasExpression.
-/// The alias name is typically the last Identifier after AS keyword.
-fn extract_alias_name(alias_expr: &Segment) -> Option<String> {
-    let children = alias_expr.children();
-    // Walk children in reverse to find the last identifier (the alias name)
-    for child in children.iter().rev() {
-        let st = child.segment_type();
-        if st == SegmentType::Identifier || st == SegmentType::QuotedIdentifier {
-            if let Segment::Token(t) = child {
-                return Some(t.token.text.to_string());
-            }
-        }
-        // Skip trivia
-        if st.is_trivia() {
-            continue;
-        }
-        // If we hit something that's not trivia or identifier, stop
-        if st != SegmentType::Keyword {
-            break;
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al04_flags_duplicate_alias() {
+        let violations = lint_sql(
+            "SELECT * FROM t1 AS a JOIN t2 AS a ON t1.id = t2.id",
+            RuleAL04,
+        );
+        assert_eq!(violations.len(), 1);
     }
-    None
+
+    #[test]
+    fn test_al04_accepts_unique_aliases() {
+        let violations = lint_sql(
+            "SELECT * FROM t1 AS a JOIN t2 AS b ON a.id = b.id",
+            RuleAL04,
+        );
+        assert_eq!(violations.len(), 0);
+    }
 }

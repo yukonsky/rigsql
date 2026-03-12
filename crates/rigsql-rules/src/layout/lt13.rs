@@ -41,14 +41,34 @@ impl Rule for RuleLT13 {
         match first_non_ws {
             Some(0) => vec![], // starts with content
             Some(pos) => {
-                vec![LintViolation::with_fix(
+                vec![LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "File starts with whitespace or blank lines.",
                     rigsql_core::Span::new(0, pos as u32),
                     vec![SourceEdit::delete(rigsql_core::Span::new(0, pos as u32))],
+                    "rules.LT13.msg",
+                    vec![],
                 )]
             }
             None => vec![], // all whitespace file — other rules handle this
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt13_flags_leading_whitespace() {
+        let violations = lint_sql("  SELECT 1", RuleLT13);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_lt13_accepts_no_leading_whitespace() {
+        let violations = lint_sql("SELECT 1", RuleLT13);
+        assert_eq!(violations.len(), 0);
     }
 }

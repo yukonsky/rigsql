@@ -57,13 +57,36 @@ impl Rule for RuleCV09 {
 
         let word = t.token.text.to_lowercase();
         if self.blocked_words.contains(&word) {
-            return vec![LintViolation::new(
+            return vec![LintViolation::with_msg_key(
                 self.code(),
                 format!("Identifier '{}' is a blocked word.", t.token.text),
                 t.token.span,
+                "rules.CV09.msg",
+                vec![("name".to_string(), t.token.text.to_string())],
             )];
         }
 
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv09_no_blocked_words_no_violation() {
+        let violations = lint_sql("SELECT temp FROM t", RuleCV09::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv09_flags_blocked_word() {
+        let rule = RuleCV09 {
+            blocked_words: vec!["temp".to_string(), "foo".to_string()],
+        };
+        let violations = lint_sql("SELECT temp FROM t", rule);
+        assert_eq!(violations.len(), 1);
     }
 }

@@ -44,15 +44,35 @@ impl Rule for RuleCV08 {
                 if t.segment_type == SegmentType::Keyword
                     && t.token.text.eq_ignore_ascii_case("RIGHT")
                 {
-                    return vec![LintViolation::new(
+                    return vec![LintViolation::with_msg_key(
                         self.code(),
                         "Use LEFT JOIN instead of RIGHT JOIN.",
                         t.token.span,
+                        "rules.CV08.msg",
+                        vec![],
                     )];
                 }
             }
         }
 
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv08_flags_right_join() {
+        let violations = lint_sql("SELECT * FROM a RIGHT JOIN b ON a.id = b.id", RuleCV08);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv08_accepts_left_join() {
+        let violations = lint_sql("SELECT * FROM a LEFT JOIN b ON a.id = b.id", RuleCV08);
+        assert_eq!(violations.len(), 0);
     }
 }

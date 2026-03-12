@@ -1,4 +1,6 @@
-use rigsql_core::{Segment, SegmentType};
+use rigsql_core::{Segment, SegmentType, Span};
+
+use crate::violation::{LintViolation, SourceEdit};
 
 /// Check if an AliasExpression's children contain an explicit AS keyword.
 pub fn has_as_keyword(children: &[Segment]) -> bool {
@@ -105,6 +107,94 @@ pub fn is_false_alias(children: &[Segment]) -> bool {
         return NOT_ALIAS_KEYWORDS.binary_search(&upper.as_str()).is_ok();
     }
     false
+}
+
+/// Generate a fix that inserts "AS " before the last non-trivia child (the alias name).
+/// Used by AL01 and AL02.
+pub fn insert_as_keyword_fix(children: &[Segment]) -> Vec<SourceEdit> {
+    last_non_trivia(children)
+        .map(|alias| vec![SourceEdit::insert(alias.span().start, "AS ")])
+        .unwrap_or_default()
+}
+
+/// Check capitalisation of a token and return a violation if it doesn't match.
+/// Shared by CP01, CP04, CP05 to avoid duplicating violation creation.
+pub fn check_capitalisation(
+    rule_code: &'static str,
+    category: &str,
+    text: &str,
+    expected: &str,
+    policy_name: &str,
+    span: Span,
+) -> Option<LintViolation> {
+    if text != expected {
+        let message = format!(
+            "{} must be {} case. Found '{}' instead of '{}'.",
+            category, policy_name, text, expected
+        );
+        let msg_key = format!("rules.{rule_code}.msg");
+        let params = vec![
+            ("category".to_string(), category.to_string()),
+            ("policy".to_string(), policy_name.to_string()),
+            ("found".to_string(), text.to_string()),
+            ("expected".to_string(), expected.to_string()),
+        ];
+        Some(LintViolation::with_fix_and_msg_key(
+            rule_code,
+            message,
+            span,
+            vec![SourceEdit::replace(span, expected.to_string())],
+            msg_key,
+            params,
+        ))
+    } else {
+        None
+    }
+}
+
+/// Extract the alias name from an AliasExpression.
+/// The alias name is the last Identifier or QuotedIdentifier before any
+/// non-trivia, non-keyword segment (scanning from the end).
+pub fn extract_alias_name(children: &[Segment]) -> Option<String> {
+    for child in children.iter().rev() {
+        let st = child.segment_type();
+        if st == SegmentType::Identifier || st == SegmentType::QuotedIdentifier {
+            if let Segment::Token(t) = child {
+                return Some(t.token.text.to_string());
+            }
+        }
+        if st.is_trivia() {
+            continue;
+        }
+        if st != SegmentType::Keyword {
+            break;
+        }
+    }
+    None
+}
+
+/// Check if a segment ends with a Newline (possibly preceded by Whitespace).
+/// Used by layout rules (LT07, LT14) to detect newlines absorbed into clause bodies.
+pub fn has_trailing_newline(segment: &Segment) -> bool {
+    for child in segment.children().iter().rev() {
+        let st = child.segment_type();
+        if st == SegmentType::Newline {
+            return true;
+        }
+        if st == SegmentType::Whitespace {
+            continue;
+        }
+        return false;
+    }
+    false
+}
+
+/// Check if the current rule context is a table alias (parent is FROM or JOIN clause).
+pub fn is_in_table_context(ctx: &crate::rule::RuleContext) -> bool {
+    ctx.parent.is_some_and(|p| {
+        let pt = p.segment_type();
+        pt == SegmentType::FromClause || pt == SegmentType::JoinClause
+    })
 }
 
 /// Find a keyword by case-insensitive name in children. Returns (index, segment).

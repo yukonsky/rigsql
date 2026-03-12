@@ -110,6 +110,28 @@ pub enum SegmentType {
     AlterTableStatement,
     DropStatement,
 
+    // PostgreSQL
+    TypeCastExpression,
+    OnConflictClause,
+    ArrayAccessExpression,
+
+    // TSQL
+    TableHint,
+
+    // TSQL Statements
+    DeclareStatement,
+    SetVariableStatement,
+    IfStatement,
+    BeginEndBlock,
+    WhileStatement,
+    TryCatchBlock,
+    ExecStatement,
+    ReturnStatement,
+    PrintStatement,
+    ThrowStatement,
+    RaiserrorStatement,
+    GoStatement,
+
     // Clauses
     SelectClause,
     FromClause,

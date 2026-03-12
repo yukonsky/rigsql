@@ -15,7 +15,7 @@ impl Rule for RuleLT10 {
         "LT10"
     }
     fn name(&self) -> &'static str {
-        "layout.select_modifier"
+        "layout.select_modifiers"
     }
     fn description(&self) -> &'static str {
         "SELECT modifiers (DISTINCT, ALL) must be on same line as SELECT."
@@ -67,13 +67,15 @@ impl Rule for RuleLT10 {
                 if (text.eq_ignore_ascii_case("DISTINCT") || text.eq_ignore_ascii_case("ALL"))
                     && has_newline
                 {
-                    return vec![LintViolation::new(
+                    return vec![LintViolation::with_msg_key(
                         self.code(),
                         format!(
                             "'{}' must be on the same line as SELECT.",
                             text.to_uppercase()
                         ),
                         t.token.span,
+                        "rules.LT10.msg",
+                        vec![("modifier".to_string(), text.to_uppercase())],
                     )];
                 }
                 // Whether it was a modifier or not, stop looking
@@ -84,5 +86,24 @@ impl Rule for RuleLT10 {
         }
 
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt10_accepts_same_line() {
+        let violations = lint_sql("SELECT DISTINCT a FROM t", RuleLT10);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt10_flags_next_line() {
+        let violations = lint_sql("SELECT\nDISTINCT a FROM t", RuleLT10);
+        assert!(!violations.is_empty());
+        assert!(violations.iter().all(|v| v.rule_code == "LT10"));
     }
 }

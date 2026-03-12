@@ -1,109 +1,125 @@
 use rigsql_core::{Segment, SegmentType};
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::LintViolation;
+use crate::violation::{LintViolation, SourceEdit};
 
-/// CV10: Consistent use of NULL in UNION.
+/// CV10: Consistent usage of preferred quotes for quoted literals.
 ///
-/// Bare NULL literals in UNION SELECT items should have an explicit type cast
-/// for clarity and consistency.
-#[derive(Debug, Default)]
-pub struct RuleCV10;
+/// By default, prefer single quotes for string literals.
+#[derive(Debug)]
+pub struct RuleCV10 {
+    pub preferred_style: QuoteStyle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuoteStyle {
+    Single,
+    Double,
+}
+
+impl Default for RuleCV10 {
+    fn default() -> Self {
+        Self {
+            preferred_style: QuoteStyle::Single,
+        }
+    }
+}
 
 impl Rule for RuleCV10 {
     fn code(&self) -> &'static str {
         "CV10"
     }
     fn name(&self) -> &'static str {
-        "convention.union_null"
+        "convention.quoted_literals"
     }
     fn description(&self) -> &'static str {
-        "Consistent use of NULL in UNION."
+        "Consistent usage of preferred quotes for quoted literals."
     }
     fn explanation(&self) -> &'static str {
-        "When using NULL in a UNION query, the type of the NULL column is ambiguous. \
-         Use an explicit CAST (e.g. CAST(NULL AS INTEGER)) to make the intent clear \
-         and avoid potential type-mismatch issues across UNION branches."
+        "String literals should use a consistent quoting style. By default, \
+         single quotes are preferred as they are the ANSI SQL standard for \
+         string literals."
     }
     fn groups(&self) -> &[RuleGroup] {
         &[RuleGroup::Convention]
     }
     fn is_fixable(&self) -> bool {
-        false
+        true
+    }
+
+    fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
+        if let Some(val) = settings.get("preferred_quoted_literal_style") {
+            self.preferred_style = match val.as_str() {
+                "double" => QuoteStyle::Double,
+                _ => QuoteStyle::Single,
+            };
+        }
     }
 
     fn crawl_type(&self) -> CrawlType {
-        CrawlType::RootOnly
+        CrawlType::Segment(vec![SegmentType::StringLiteral])
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
-        let mut violations = Vec::new();
-        find_union_nulls(ctx.root, false, &mut violations);
-        violations
+        let Segment::Token(t) = ctx.segment else {
+            return vec![];
+        };
+
+        let text = t.token.text.as_str();
+        if text.len() < 2 {
+            return vec![];
+        }
+
+        let first_char = text.as_bytes()[0];
+        let uses_single = first_char == b'\'';
+        let uses_double = first_char == b'"';
+
+        match self.preferred_style {
+            QuoteStyle::Single if uses_double => {
+                let inner = &text[1..text.len() - 1];
+                let replaced = inner.replace('\'', "''").replace("\"\"", "\"");
+                let new_text = format!("'{}'", replaced);
+                vec![LintViolation::with_fix_and_msg_key(
+                    self.code(),
+                    "Use single quotes for string literals.",
+                    t.token.span,
+                    vec![SourceEdit::replace(t.token.span, new_text)],
+                    "rules.CV10.msg.single",
+                    vec![],
+                )]
+            }
+            QuoteStyle::Double if uses_single => {
+                let inner = &text[1..text.len() - 1];
+                let replaced = inner.replace('"', "\"\"").replace("''", "'");
+                let new_text = format!("\"{}\"", replaced);
+                vec![LintViolation::with_fix_and_msg_key(
+                    self.code(),
+                    "Use double quotes for string literals.",
+                    t.token.span,
+                    vec![SourceEdit::replace(t.token.span, new_text)],
+                    "rules.CV10.msg.double",
+                    vec![],
+                )]
+            }
+            _ => vec![],
+        }
     }
 }
 
-/// Recursively walk the tree looking for SelectStatements that are part of a
-/// UNION. When we find one, scan its SelectClause items for bare NullLiterals.
-fn find_union_nulls(segment: &Segment, in_union: bool, violations: &mut Vec<LintViolation>) {
-    let children = segment.children();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
 
-    // Detect if this node contains a UNION keyword among its children,
-    // which would make sibling SelectStatements part of a UNION.
-    let has_union = children.iter().any(|c| {
-        if let Segment::Token(t) = c {
-            t.token.text.eq_ignore_ascii_case("UNION")
-        } else {
-            false
-        }
-    });
-
-    let union_context = in_union || has_union;
-
-    for child in children {
-        if union_context && child.segment_type() == SegmentType::SelectStatement {
-            check_select_for_bare_null(child, violations);
-        }
-
-        // Also check nested SelectStatements at the same level if has_union
-        if child.segment_type() == SegmentType::SelectClause && union_context {
-            check_clause_for_bare_null(child, violations);
-        }
-
-        find_union_nulls(child, union_context, violations);
-    }
-}
-
-fn check_select_for_bare_null(select: &Segment, violations: &mut Vec<LintViolation>) {
-    select.walk(&mut |seg| {
-        if seg.segment_type() == SegmentType::SelectClause {
-            check_clause_for_bare_null(seg, violations);
-        }
-    });
-}
-
-fn check_clause_for_bare_null(clause: &Segment, violations: &mut Vec<LintViolation>) {
-    for child in clause.children() {
-        find_bare_nulls(child, violations);
-    }
-}
-
-/// Walk looking for NullLiterals that are NOT inside a CastExpression.
-fn find_bare_nulls(segment: &Segment, violations: &mut Vec<LintViolation>) {
-    if segment.segment_type() == SegmentType::CastExpression {
-        return;
+    #[test]
+    fn test_cv10_accepts_single_quotes() {
+        let violations = lint_sql("SELECT 'hello' FROM t", RuleCV10::default());
+        assert_eq!(violations.len(), 0);
     }
 
-    if segment.segment_type() == SegmentType::NullLiteral {
-        violations.push(LintViolation::new(
-            "CV10",
-            "Bare NULL in UNION. Consider using an explicit CAST.",
-            segment.span(),
-        ));
-        return;
-    }
-
-    for child in segment.children() {
-        find_bare_nulls(child, violations);
+    #[test]
+    fn test_cv10_accepts_non_string() {
+        let violations = lint_sql("SELECT 1 FROM t", RuleCV10::default());
+        assert_eq!(violations.len(), 0);
     }
 }

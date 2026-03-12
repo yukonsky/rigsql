@@ -1,7 +1,8 @@
 use rigsql_core::{Segment, SegmentType};
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::LintViolation;
+use crate::utils::first_non_trivia;
+use crate::violation::{LintViolation, SourceEdit};
 
 /// CV04: Use COUNT(*) instead of COUNT(0) or COUNT(1).
 ///
@@ -39,7 +40,7 @@ impl Rule for RuleCV04 {
         let children = ctx.segment.children();
 
         // Check if function is COUNT
-        let func_name = children.iter().find(|c| !c.segment_type().is_trivia());
+        let func_name = first_non_trivia(children);
         let is_count = match func_name {
             Some(Segment::Token(t)) => t.token.text.eq_ignore_ascii_case("COUNT"),
             _ => false,
@@ -67,10 +68,13 @@ impl Rule for RuleCV04 {
                 if args.len() == 1 {
                     let text = args[0].text.as_str();
                     if text == "0" || text == "1" {
-                        return vec![LintViolation::new(
+                        return vec![LintViolation::with_fix_and_msg_key(
                             self.code(),
                             format!("Use COUNT(*) instead of COUNT({}).", text),
                             ctx.segment.span(),
+                            vec![SourceEdit::replace(args[0].span, "*")],
+                            "rules.CV04.msg",
+                            vec![("arg".to_string(), text.to_string())],
                         )];
                     }
                 }
@@ -78,5 +82,32 @@ impl Rule for RuleCV04 {
         }
 
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv04_count_1_not_detected_yet() {
+        // NOTE: Parser currently produces ParenExpression instead of FunctionArgs,
+        // so the rule cannot detect COUNT(1) yet. This test documents current behavior.
+        let violations = lint_sql("SELECT COUNT(1) FROM t", RuleCV04);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv04_count_0_not_detected_yet() {
+        // NOTE: Same parser limitation as above.
+        let violations = lint_sql("SELECT COUNT(0) FROM t", RuleCV04);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv04_accepts_count_star() {
+        let violations = lint_sql("SELECT COUNT(*) FROM t", RuleCV04);
+        assert_eq!(violations.len(), 0);
     }
 }

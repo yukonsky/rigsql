@@ -44,25 +44,92 @@ impl Rule for RuleLT01 {
             return vec![];
         }
 
+        // Position 0 means start of siblings — skip
+        if ctx.index_in_parent == 0 {
+            return vec![];
+        }
+
+        let prev = &ctx.siblings[ctx.index_in_parent - 1];
+        // If previous is Newline, this is indentation — skip
+        if prev.segment_type() == SegmentType::Newline {
+            return vec![];
+        }
+
         let text = t.token.text.as_str();
 
-        // Only flag multiple spaces within a line (not indentation)
-        // Check if this whitespace is preceded by a non-newline token
-        if text.len() > 1 && ctx.index_in_parent > 0 {
-            let prev = &ctx.siblings[ctx.index_in_parent - 1];
-            // If previous is Newline, this is indentation — skip
-            if prev.segment_type() == SegmentType::Newline {
-                return vec![];
-            }
+        // Check if this is trailing whitespace (next sibling is explicitly a Newline).
+        // When the whitespace is the last sibling, it may be at a node boundary
+        // (e.g. space between two statements in the same line) — NOT trailing.
+        let is_trailing = if ctx.index_in_parent + 1 < ctx.siblings.len() {
+            ctx.siblings[ctx.index_in_parent + 1].segment_type() == SegmentType::Newline
+        } else {
+            false
+        };
 
-            return vec![LintViolation::with_fix(
+        if is_trailing {
+            return vec![LintViolation::with_fix_and_msg_key(
+                self.code(),
+                "Trailing whitespace.",
+                t.token.span,
+                vec![SourceEdit::delete(t.token.span)],
+                "rules.LT01.msg.trailing",
+                vec![],
+            )];
+        }
+
+        // Excessive inline spacing (multiple spaces)
+        if text.len() > 1 {
+            return vec![LintViolation::with_fix_and_msg_key(
                 self.code(),
                 format!("Expected single space, found {} spaces.", text.len()),
                 t.token.span,
                 vec![SourceEdit::replace(t.token.span, " ")],
+                "rules.LT01.msg",
+                vec![("count".to_string(), text.len().to_string())],
             )];
         }
 
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt01_flags_double_space() {
+        let violations = lint_sql("SELECT  *  FROM t", RuleLT01);
+        assert!(!violations.is_empty());
+        assert!(violations.iter().all(|v| v.rule_code == "LT01"));
+    }
+
+    #[test]
+    fn test_lt01_accepts_single_space() {
+        let violations = lint_sql("SELECT * FROM t", RuleLT01);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt01_skips_indentation() {
+        let violations = lint_sql("SELECT *\n    FROM t", RuleLT01);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt01_trailing_whitespace_removed() {
+        let violations = lint_sql("SELECT *  \n FROM t", RuleLT01);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].message, "Trailing whitespace.");
+        assert!(violations[0].fixes[0].new_text.is_empty());
+    }
+
+    #[test]
+    fn test_lt01_single_trailing_space() {
+        let violations = lint_sql("SELECT * \nFROM t", RuleLT01);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].message, "Trailing whitespace.");
+        assert!(violations[0].fixes[0].new_text.is_empty());
     }
 }

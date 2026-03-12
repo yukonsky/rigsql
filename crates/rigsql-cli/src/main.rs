@@ -1,8 +1,6 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process;
-
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
+use rayon::prelude::*;
 use rigsql_config::{filter_noqa, Config};
 use rigsql_core::Segment;
 use rigsql_dialects::DialectKind;
@@ -12,6 +10,9 @@ use rigsql_rules::{
     rule::{apply_fixes, lint},
     Rule,
 };
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process;
 
 #[derive(Parser)]
 #[command(name = "rigsql", version, about = "Fast SQL linter written in Rust")]
@@ -27,9 +28,13 @@ enum Commands {
         /// SQL file to parse (use - for stdin)
         file: String,
 
-        /// SQL dialect
-        #[arg(long, default_value = "ansi")]
-        dialect: DialectArg,
+        /// SQL dialect [default: ansi] (overrides config file)
+        #[arg(long)]
+        dialect: Option<DialectArg>,
+
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
 
         /// Output format
         #[arg(long, default_value = "tree")]
@@ -41,9 +46,13 @@ enum Commands {
         /// SQL files or directories to lint
         files: Vec<String>,
 
-        /// SQL dialect
-        #[arg(long, default_value = "ansi")]
-        dialect: DialectArg,
+        /// SQL dialect [default: ansi] (overrides config file)
+        #[arg(long)]
+        dialect: Option<DialectArg>,
+
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
 
         /// Output format
         #[arg(long, default_value = "human")]
@@ -59,9 +68,13 @@ enum Commands {
         /// SQL files or directories to fix
         files: Vec<String>,
 
-        /// SQL dialect
-        #[arg(long, default_value = "ansi")]
-        dialect: DialectArg,
+        /// SQL dialect [default: ansi] (overrides config file)
+        #[arg(long)]
+        dialect: Option<DialectArg>,
+
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
 
         /// Don't write changes, just show what would be fixed
         #[arg(long)]
@@ -73,7 +86,17 @@ enum Commands {
     },
 
     /// List available lint rules
-    Rules,
+    Rules {
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
+    },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        shell: Shell,
+    },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -99,10 +122,58 @@ enum ParseFormat {
     Json,
 }
 
-#[derive(Clone, ValueEnum)]
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum LintFormat {
     Human,
     Json,
+    Sarif,
+    Github,
+}
+
+/// Resolve the effective dialect: CLI flag > config file > "ansi" default.
+fn resolve_dialect(cli_dialect: Option<DialectArg>, config: &Config) -> DialectKind {
+    if let Some(arg) = cli_dialect {
+        return arg.into();
+    }
+    if let Some(ref name) = config.dialect {
+        match name.parse::<DialectKind>() {
+            Ok(d) => return d,
+            Err(_) => {
+                eprintln!("Warning: unknown dialect '{name}' in config, using 'ansi'");
+            }
+        }
+    }
+    DialectKind::Ansi
+}
+
+/// Resolve the effective locale: CLI flag > config > system locale > "en".
+/// For machine-readable formats (JSON, SARIF, GitHub), always use "en".
+fn resolve_locale(cli_locale: Option<&str>, config: &Config, format: Option<LintFormat>) -> String {
+    // Machine-readable formats always use English
+    if matches!(
+        format,
+        Some(LintFormat::Json | LintFormat::Sarif | LintFormat::Github)
+    ) {
+        return "en".to_string();
+    }
+    // CLI flag takes precedence
+    if let Some(locale) = cli_locale {
+        return locale.to_string();
+    }
+    // Config file
+    if let Some(ref locale) = config.locale {
+        return locale.clone();
+    }
+    // System locale detection
+    sys_locale::get_locale()
+        .and_then(|l| {
+            if l.starts_with("ja") {
+                Some("ja".to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "en".to_string())
 }
 
 fn main() {
@@ -112,30 +183,56 @@ fn main() {
         Commands::Parse {
             file,
             dialect,
+            locale,
             format,
-        } => cmd_parse(&file, dialect.into(), format),
+        } => {
+            let config = Config::load_for_path(Path::new(&file));
+            let dialect = resolve_dialect(dialect, &config);
+            let locale = resolve_locale(locale.as_deref(), &config, None);
+            rigsql_i18n::set_locale(&locale);
+            cmd_parse(&file, dialect, format);
+        }
 
         Commands::Lint {
             files,
             dialect,
+            locale,
             format,
             no_color,
         } => {
-            let exit_code = cmd_lint(&files, dialect.into(), format, no_color);
+            let (rules, config) = build_rules(&files);
+            let dialect = resolve_dialect(dialect, &config);
+            let locale = resolve_locale(locale.as_deref(), &config, Some(format));
+            rigsql_i18n::set_locale(&locale);
+            let exit_code = cmd_lint(&files, dialect, format, no_color, rules);
             process::exit(exit_code);
         }
 
         Commands::Fix {
             files,
             dialect,
+            locale,
             dry_run,
             force,
         } => {
-            let exit_code = cmd_fix(&files, dialect.into(), dry_run, force);
+            let (rules, config) = build_rules(&files);
+            let dialect = resolve_dialect(dialect, &config);
+            let locale = resolve_locale(locale.as_deref(), &config, None);
+            rigsql_i18n::set_locale(&locale);
+            let exit_code = cmd_fix(&files, dialect, dry_run, force, rules);
             process::exit(exit_code);
         }
 
-        Commands::Rules => cmd_rules(),
+        Commands::Rules { locale } => {
+            let config = Config::default();
+            let locale = resolve_locale(locale.as_deref(), &config, None);
+            rigsql_i18n::set_locale(&locale);
+            cmd_rules();
+        }
+
+        Commands::Completions { shell } => {
+            clap_complete::generate(shell, &mut Cli::command(), "rigsql", &mut std::io::stdout());
+        }
     }
 }
 
@@ -157,7 +254,8 @@ fn cmd_parse(file: &str, dialect: DialectKind, format: ParseFormat) {
 }
 
 /// Build configured rules from config file found near the given paths.
-fn build_rules(files: &[String]) -> Vec<Box<dyn Rule>> {
+/// Returns the rules and the loaded config (so callers can use `config.dialect`).
+fn build_rules(files: &[String]) -> (Vec<Box<dyn Rule>>, Config) {
     let config = files
         .first()
         .map(|f| Config::load_for_path(Path::new(f)))
@@ -185,161 +283,122 @@ fn build_rules(files: &[String]) -> Vec<Box<dyn Rule>> {
         rules.retain(|r| !config.exclude_rules.iter().any(|e| e == r.code()));
     }
 
-    rules
+    (rules, config)
 }
 
-fn cmd_fix(files: &[String], dialect: DialectKind, dry_run: bool, _force: bool) -> i32 {
+/// Per-file lint result for aggregation after parallel processing.
+struct FileLintResult {
+    path: PathBuf,
+    source: String,
+    violations: Vec<rigsql_rules::LintViolation>,
+    /// Pre-formatted output for human format (avoids post-processing).
+    human_output: Option<String>,
+}
+
+fn cmd_lint(
+    files: &[String],
+    dialect: DialectKind,
+    format: LintFormat,
+    no_color: bool,
+    rules: Vec<Box<dyn Rule>>,
+) -> i32 {
     let sql_files = collect_sql_files(files);
     if sql_files.is_empty() {
-        eprintln!("No SQL files found.");
+        eprintln!("{}", rigsql_i18n::t("cli.no_sql_files"));
         return 2;
     }
 
-    let all_rules = build_rules(files);
-    let parser = dialect.parser();
-    let mut fixed_count = 0;
-    let mut file_count = 0;
-
-    for path in &sql_files {
-        let source = match fs::read_to_string(path) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Error reading {}: {}", path.display(), e);
-                continue;
-            }
-        };
-
-        // Iterative fix loop: parse → lint → fix → repeat until stable (max 10 rounds)
-        let mut current = source.clone();
-        let mut rounds = 0;
-        let max_rounds = 10;
-
-        while let Ok(cst) = parser.parse(&current) {
-            let mut violations = lint(&cst, &current, &all_rules);
-            filter_noqa(&current, &mut violations);
-
-            // Only keep fixable violations (those with edits)
-            let fixable: Vec<_> = violations
-                .into_iter()
-                .filter(|v| !v.fixes.is_empty())
-                .collect();
-            if fixable.is_empty() {
-                break;
-            }
-
-            let new_source = apply_fixes(&current, &fixable);
-            if new_source == current {
-                break; // No progress
-            }
-
-            fixed_count += fixable.len();
-            current = new_source;
-            rounds += 1;
-            if rounds >= max_rounds {
-                break;
-            }
-        }
-
-        if current != source {
-            file_count += 1;
-            if dry_run {
-                println!("Would fix: {}", path.display());
-            } else {
-                if let Err(e) = fs::write(path, &current) {
-                    eprintln!("Error writing {}: {}", path.display(), e);
-                } else {
-                    println!("Fixed: {}", path.display());
-                }
-            }
-        }
-    }
-
-    if file_count == 0 {
-        eprintln!("No fixable violations found.");
-    } else {
-        eprintln!(
-            "{} {} in {} file{}.",
-            if dry_run { "Would apply" } else { "Applied" },
-            fixed_count,
-            file_count,
-            if file_count == 1 { "" } else { "s" },
-        );
-    }
-
-    0
-}
-
-fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color: bool) -> i32 {
-    let sql_files = collect_sql_files(files);
-    if sql_files.is_empty() {
-        eprintln!("No SQL files found.");
-        return 2;
-    }
-
-    let rules = build_rules(files);
-
-    let parser = dialect.parser();
+    let dialect_str = dialect.as_str();
     let formatter = HumanFormatter::new(!no_color);
 
+    // Parallel lint: each file is parsed + linted independently
+    let results: Vec<FileLintResult> = sql_files
+        .par_iter()
+        .filter_map(|path| {
+            let source = match fs::read_to_string(path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Error reading {}: {}", path.display(), e);
+                    return None;
+                }
+            };
+
+            let parser = dialect.parser();
+            let cst = match parser.parse(&source) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Parse error in {}: {}", path.display(), e);
+                    return None;
+                }
+            };
+
+            let mut violations = lint(&cst, &source, &rules, dialect_str);
+            filter_noqa(&source, &mut violations);
+
+            let human_output = if format == LintFormat::Human {
+                let out = formatter.format_file(path, &source, &violations);
+                Some(out)
+            } else {
+                None
+            };
+
+            Some(FileLintResult {
+                path: path.clone(),
+                source,
+                violations,
+                human_output,
+            })
+        })
+        .collect();
+
+    // Aggregate results (sequential, for deterministic output order)
+    let file_count = sql_files.len();
     let mut total_violations = 0;
     let mut files_with_violations = 0;
-    let mut json_results: Vec<(PathBuf, String, Vec<rigsql_rules::LintViolation>)> = Vec::new();
 
-    for path in &sql_files {
-        let source = match fs::read_to_string(path) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Error reading {}: {}", path.display(), e);
-                continue;
-            }
-        };
-
-        let cst = match parser.parse(&source) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("Parse error in {}: {}", path.display(), e);
-                continue;
-            }
-        };
-
-        let mut violations = lint(&cst, &source, &rules);
-
-        // Apply noqa filtering
-        filter_noqa(&source, &mut violations);
-
-        if !violations.is_empty() {
+    for r in &results {
+        if !r.violations.is_empty() {
             files_with_violations += 1;
-            total_violations += violations.len();
-        }
-
-        match format {
-            LintFormat::Human => {
-                let output = formatter.format_file(path, &source, &violations);
-                if !output.is_empty() {
-                    print!("{output}");
-                }
-            }
-            LintFormat::Json => {
-                json_results.push((path.clone(), source, violations));
-            }
+            total_violations += r.violations.len();
         }
     }
 
     match format {
         LintFormat::Human => {
+            for r in &results {
+                if let Some(out) = &r.human_output {
+                    if !out.is_empty() {
+                        print!("{out}");
+                    }
+                }
+            }
             let summary =
-                formatter.format_summary(sql_files.len(), files_with_violations, total_violations);
+                formatter.format_summary(file_count, files_with_violations, total_violations);
             print!("{summary}");
         }
-        LintFormat::Json => {
-            let refs: Vec<(&Path, &str, &[rigsql_rules::LintViolation])> = json_results
+        LintFormat::Json | LintFormat::Sarif | LintFormat::Github => {
+            let refs: Vec<(&Path, &str, &[rigsql_rules::LintViolation])> = results
                 .iter()
-                .map(|(p, s, v)| (p.as_path(), s.as_str(), v.as_slice()))
+                .map(|r| (r.path.as_path(), r.source.as_str(), r.violations.as_slice()))
                 .collect();
-            println!(
-                "{}",
-                rigsql_output::JsonFormatter::format_with_rules(&refs, &rules)
-            );
+            match format {
+                LintFormat::Json => {
+                    println!(
+                        "{}",
+                        rigsql_output::JsonFormatter::format_with_rules(&refs, &rules)
+                    );
+                }
+                LintFormat::Sarif => {
+                    println!(
+                        "{}",
+                        rigsql_output::SarifFormatter::format_with_rules(&refs, &rules)
+                    );
+                }
+                LintFormat::Github => {
+                    print!("{}", rigsql_output::GithubFormatter::format(&refs));
+                }
+                LintFormat::Human => unreachable!(),
+            }
         }
     }
 
@@ -350,17 +409,129 @@ fn cmd_lint(files: &[String], dialect: DialectKind, format: LintFormat, no_color
     }
 }
 
+/// Per-file fix result.
+struct FileFixResult {
+    path: PathBuf,
+    fixed: String,
+    fix_count: usize,
+}
+
+fn cmd_fix(
+    files: &[String],
+    dialect: DialectKind,
+    dry_run: bool,
+    _force: bool,
+    all_rules: Vec<Box<dyn Rule>>,
+) -> i32 {
+    let sql_files = collect_sql_files(files);
+    if sql_files.is_empty() {
+        eprintln!("{}", rigsql_i18n::t("cli.no_sql_files"));
+        return 2;
+    }
+    let dialect_str = dialect.as_str();
+
+    // Parallel fix: each file runs its own iterative fix loop
+    let results: Vec<FileFixResult> = sql_files
+        .par_iter()
+        .filter_map(|path| {
+            let source = match fs::read_to_string(path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Error reading {}: {}", path.display(), e);
+                    return None;
+                }
+            };
+
+            let parser = dialect.parser();
+            let mut current = source;
+            let mut total_fixed = 0;
+            let max_rounds = 10;
+
+            for _ in 0..max_rounds {
+                let cst = match parser.parse(&current) {
+                    Ok(c) => c,
+                    Err(_) => break,
+                };
+
+                let mut violations = lint(&cst, &current, &all_rules, dialect_str);
+                filter_noqa(&current, &mut violations);
+
+                let fixable: Vec<_> = violations
+                    .into_iter()
+                    .filter(|v| !v.fixes.is_empty())
+                    .collect();
+                if fixable.is_empty() {
+                    break;
+                }
+
+                let new_source = apply_fixes(&current, &fixable);
+                if new_source == current {
+                    break;
+                }
+
+                total_fixed += fixable.len();
+                current = new_source;
+            }
+
+            if total_fixed == 0 {
+                return None;
+            }
+
+            Some(FileFixResult {
+                path: path.clone(),
+                fixed: current,
+                fix_count: total_fixed,
+            })
+        })
+        .collect();
+
+    let file_count = results.len();
+    let mut total_fixed = 0;
+
+    for r in &results {
+        total_fixed += r.fix_count;
+        if dry_run {
+            let msg = rigsql_i18n::t("cli.would_fix");
+            println!("{}", msg.replace("%{path}", &r.path.display().to_string()));
+        } else if let Err(e) = fs::write(&r.path, &r.fixed) {
+            eprintln!("Error writing {}: {}", r.path.display(), e);
+        } else {
+            let msg = rigsql_i18n::t("cli.fixed");
+            println!("{}", msg.replace("%{path}", &r.path.display().to_string()));
+        }
+    }
+
+    if file_count == 0 {
+        eprintln!("{}", rigsql_i18n::t("cli.no_fixable"));
+    } else {
+        let action = if dry_run {
+            rigsql_i18n::t("cli.would_apply")
+        } else {
+            rigsql_i18n::t("cli.applied")
+        };
+        let template = rigsql_i18n::t("cli.applied_fixes");
+        let msg = template
+            .replace("%{action}", &action)
+            .replace("%{count}", &total_fixed.to_string())
+            .replace("%{files}", &file_count.to_string());
+        eprintln!("{msg}");
+    }
+
+    0
+}
+
 fn cmd_rules() {
     let rules = default_rules();
-    println!("{:<6} {:<30} Description", "Code", "Name");
+    let desc_header = if rigsql_i18n::get_locale() == "ja" {
+        "説明"
+    } else {
+        "Description"
+    };
+    println!("{:<6} {:<30} {}", "Code", "Name", desc_header);
     println!("{}", "-".repeat(80));
     for rule in &rules {
-        println!(
-            "{:<6} {:<30} {}",
-            rule.code(),
-            rule.name(),
-            rule.description()
-        );
+        let desc = rigsql_i18n::rule_description(rule.code(), rule.description());
+        println!("{:<6} {:<30} {}", rule.code(), rule.name(), desc);
     }
 }
 
@@ -371,24 +542,20 @@ fn collect_sql_files(paths: &[String]) -> Vec<PathBuf> {
         if path.is_file() {
             files.push(path);
         } else if path.is_dir() {
-            walk_dir_recursive(&path, &mut files);
+            let walker = ignore::WalkBuilder::new(&path)
+                .hidden(true) // skip hidden files
+                .git_ignore(true) // respect .gitignore
+                .build();
+            for entry in walker.flatten() {
+                let p = entry.path().to_path_buf();
+                if p.is_file() && p.extension().is_some_and(|ext| ext == "sql") {
+                    files.push(p);
+                }
+            }
         }
     }
     files.sort();
     files
-}
-
-fn walk_dir_recursive(dir: &Path, files: &mut Vec<PathBuf>) {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p.is_dir() {
-                walk_dir_recursive(&p, files);
-            } else if p.is_file() && p.extension().is_some_and(|ext| ext == "sql") {
-                files.push(p);
-            }
-        }
-    }
 }
 
 fn read_file_or_stdin(file: &str) -> String {

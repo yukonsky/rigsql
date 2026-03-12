@@ -1,8 +1,8 @@
 use rigsql_core::SegmentType;
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::utils::{has_as_keyword, is_false_alias};
-use crate::violation::{LintViolation, SourceEdit};
+use crate::utils::{has_as_keyword, insert_as_keyword_fix, is_false_alias};
+use crate::violation::LintViolation;
 
 /// AL02: Implicit aliasing of columns is not allowed.
 ///
@@ -38,36 +38,49 @@ impl Rule for RuleAL02 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
-        // Only flag if parent is SelectClause (column aliases, not table aliases)
         let is_in_select = ctx
             .parent
             .is_some_and(|p| p.segment_type() == SegmentType::SelectClause);
-
         if !is_in_select {
             return vec![];
         }
 
-        // Skip if the "alias" is actually a misidentified keyword (e.g. OVER)
-        if is_false_alias(ctx.segment.children()) {
+        let children = ctx.segment.children();
+        if is_false_alias(children) || has_as_keyword(children) {
             return vec![];
         }
 
-        if !has_as_keyword(ctx.segment.children()) {
-            let children = ctx.segment.children();
-            let fix = children
-                .iter()
-                .rev()
-                .find(|c| !c.segment_type().is_trivia())
-                .map(|alias| SourceEdit::insert(alias.span().start, "AS "));
+        vec![LintViolation::with_fix_and_msg_key(
+            self.code(),
+            "Implicit column aliasing not allowed. Use explicit AS keyword.",
+            ctx.segment.span(),
+            insert_as_keyword_fix(children),
+            "rules.AL02.msg",
+            vec![],
+        )]
+    }
+}
 
-            return vec![LintViolation::with_fix(
-                self.code(),
-                "Implicit column aliasing not allowed. Use explicit AS keyword.",
-                ctx.segment.span(),
-                fix.into_iter().collect(),
-            )];
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
 
-        vec![]
+    #[test]
+    fn test_al02_flags_implicit_column_alias() {
+        let violations = lint_sql("SELECT col alias_name FROM t", RuleAL02);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al02_accepts_explicit_as() {
+        let violations = lint_sql("SELECT col AS alias_name FROM t", RuleAL02);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_al02_skips_non_select() {
+        let violations = lint_sql("SELECT * FROM t1 t2", RuleAL02);
+        assert_eq!(violations.len(), 0);
     }
 }

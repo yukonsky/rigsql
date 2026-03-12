@@ -1,7 +1,7 @@
 use rigsql_core::{Segment, SegmentType, TokenKind};
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::LintViolation;
+use crate::violation::{LintViolation, SourceEdit};
 
 /// CV01: Use consistent not-equal operator.
 ///
@@ -73,20 +73,53 @@ impl Rule for RuleCV01 {
         let text = t.token.text.as_str();
         match self.preferred {
             NotEqualStyle::CStyle if text == "<>" => {
-                vec![LintViolation::new(
+                vec![LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Use '!=' instead of '<>'.",
                     t.token.span,
+                    vec![SourceEdit::replace(t.token.span, "!=")],
+                    "rules.CV01.msg.use_ne",
+                    vec![],
                 )]
             }
             NotEqualStyle::AnsiStyle if text == "!=" => {
-                vec![LintViolation::new(
+                vec![LintViolation::with_fix_and_msg_key(
                     self.code(),
                     "Use '<>' instead of '!='.",
                     t.token.span,
+                    vec![SourceEdit::replace(t.token.span, "<>")],
+                    "rules.CV01.msg.use_ltgt",
+                    vec![],
                 )]
             }
             _ => vec![],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cv01_flags_ansi_neq() {
+        let violations = lint_sql("SELECT * FROM t WHERE a <> b", RuleCV01::default());
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cv01_accepts_cstyle_neq() {
+        let violations = lint_sql("SELECT * FROM t WHERE a != b", RuleCV01::default());
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv01_ansi_policy_flags_cstyle() {
+        let rule = RuleCV01 {
+            preferred: NotEqualStyle::AnsiStyle,
+        };
+        let violations = lint_sql("SELECT * FROM t WHERE a != b", rule);
+        assert_eq!(violations.len(), 1);
     }
 }

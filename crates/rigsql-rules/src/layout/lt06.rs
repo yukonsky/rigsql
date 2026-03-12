@@ -15,7 +15,7 @@ impl Rule for RuleLT06 {
         "LT06"
     }
     fn name(&self) -> &'static str {
-        "layout.function_paren"
+        "layout.functions"
     }
     fn description(&self) -> &'static str {
         "Function name not followed immediately by parenthesis."
@@ -79,11 +79,34 @@ impl Rule for RuleLT06 {
             .collect();
 
         let first_ws = whitespace_spans[0];
-        vec![LintViolation::with_fix(
+        vec![LintViolation::with_fix_and_msg_key(
             self.code(),
             "No whitespace allowed between function name and parenthesis.",
             first_ws,
             fixes,
+            "rules.LT06.msg",
+            vec![],
         )]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt06_space_before_paren_not_detected_yet() {
+        let violations = lint_sql("SELECT COUNT (*) FROM t", RuleLT06);
+        // NOTE: Parser does not recognize "COUNT (...)" (with space) as a FunctionCall,
+        // so the rule cannot fire. This is a known parser limitation.
+        // When the parser is improved to handle this case, this test should be updated.
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt06_accepts_no_space() {
+        let violations = lint_sql("SELECT COUNT(*) FROM t", RuleLT06);
+        assert_eq!(violations.len(), 0);
     }
 }

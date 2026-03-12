@@ -14,7 +14,7 @@ impl Rule for RuleLT11 {
         "LT11"
     }
     fn name(&self) -> &'static str {
-        "layout.set_operator_newline"
+        "layout.set_operators"
     }
     fn description(&self) -> &'static str {
         "Set operators should be surrounded by newlines."
@@ -68,24 +68,24 @@ impl Rule for RuleLT11 {
             let has_newline_after = check_adjacent_newline(&tokens, end_idx, Direction::After);
 
             if !has_newline_before {
-                violations.push(LintViolation::new(
+                let operator_text = t.token.text.to_ascii_uppercase();
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
-                    format!(
-                        "Expected newline before '{}'.",
-                        t.token.text.to_ascii_uppercase()
-                    ),
+                    format!("Expected newline before '{}'.", operator_text),
                     op_span,
+                    "rules.LT11.msg.before",
+                    vec![("operator".to_string(), operator_text)],
                 ));
             }
 
             if !has_newline_after {
-                violations.push(LintViolation::new(
+                let operator_text = t.token.text.to_ascii_uppercase();
+                violations.push(LintViolation::with_msg_key(
                     self.code(),
-                    format!(
-                        "Expected newline after '{}'.",
-                        t.token.text.to_ascii_uppercase()
-                    ),
+                    format!("Expected newline after '{}'.", operator_text),
                     op_span,
+                    "rules.LT11.msg.after",
+                    vec![("operator".to_string(), operator_text)],
                 ));
             }
         }
@@ -111,7 +111,11 @@ fn check_adjacent_newline(tokens: &[TokenSegment], idx: usize, dir: Direction) -
         if tokens[j].segment_type == SegmentType::Newline {
             return true;
         }
-        if tokens[j].segment_type != SegmentType::Whitespace {
+        // Skip whitespace and comments (e.g., `UNION -- noqa: AM02\n` should be OK)
+        if tokens[j].segment_type != SegmentType::Whitespace
+            && tokens[j].segment_type != SegmentType::LineComment
+            && tokens[j].segment_type != SegmentType::BlockComment
+        {
             return false;
         }
         j = match dir {
@@ -136,5 +140,38 @@ fn collect_leaf_tokens_inner(segment: &Segment, out: &mut Vec<TokenSegment>) {
                 collect_leaf_tokens_inner(child, out);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_lt11_flags_inline_union() {
+        let violations = lint_sql("SELECT 1 UNION SELECT 2", RuleLT11);
+        assert!(!violations.is_empty());
+        assert!(violations.iter().all(|v| v.rule_code == "LT11"));
+    }
+
+    #[test]
+    fn test_lt11_accepts_newlines() {
+        let violations = lint_sql("SELECT 1\nUNION\nSELECT 2", RuleLT11);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt11_accepts_union_with_trailing_comment() {
+        // UNION followed by a line comment and then a newline should be OK
+        let violations = lint_sql("SELECT 1\nUNION -- noqa: AM02\nSELECT 2", RuleLT11);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_lt11_accepts_union_with_leading_comment() {
+        // Comment before UNION on a separate line
+        let violations = lint_sql("SELECT 1\n-- comment\nUNION\nSELECT 2", RuleLT11);
+        assert_eq!(violations.len(), 0);
     }
 }

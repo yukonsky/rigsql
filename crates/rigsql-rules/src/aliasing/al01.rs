@@ -1,8 +1,8 @@
 use rigsql_core::SegmentType;
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::utils::{has_as_keyword, is_false_alias};
-use crate::violation::{LintViolation, SourceEdit};
+use crate::utils::{has_as_keyword, insert_as_keyword_fix, is_false_alias};
+use crate::violation::LintViolation;
 
 /// AL01: Implicit aliasing of table/column is not allowed.
 ///
@@ -37,26 +37,47 @@ impl Rule for RuleAL01 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
-        // Skip if the "alias" is actually a misidentified keyword (e.g. OVER)
-        if is_false_alias(ctx.segment.children()) {
+        let children = ctx.segment.children();
+        if is_false_alias(children) || has_as_keyword(children) {
             return vec![];
         }
-        if !has_as_keyword(ctx.segment.children()) {
-            let children = ctx.segment.children();
-            let fix = children
-                .iter()
-                .rev()
-                .find(|c| !c.segment_type().is_trivia())
-                .map(|alias| SourceEdit::insert(alias.span().start, "AS "));
 
-            return vec![LintViolation::with_fix(
-                self.code(),
-                "Implicit aliasing not allowed. Use explicit AS keyword.",
-                ctx.segment.span(),
-                fix.into_iter().collect(),
-            )];
-        }
+        vec![LintViolation::with_fix_and_msg_key(
+            self.code(),
+            "Implicit aliasing not allowed. Use explicit AS keyword.",
+            ctx.segment.span(),
+            insert_as_keyword_fix(children),
+            "rules.AL01.msg",
+            vec![],
+        )]
+    }
+}
 
-        vec![]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_al01_flags_implicit_alias() {
+        let violations = lint_sql("SELECT a b FROM t", RuleAL01);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_al01_accepts_explicit_alias() {
+        let violations = lint_sql("SELECT a AS b FROM t", RuleAL01);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_al01_fix_inserts_as() {
+        let violations = lint_sql("SELECT a b FROM t", RuleAL01);
+        assert_eq!(violations.len(), 1);
+        assert!(!violations[0].fixes.is_empty());
+        assert!(violations[0]
+            .fixes
+            .iter()
+            .any(|f| f.new_text.contains("AS")));
     }
 }

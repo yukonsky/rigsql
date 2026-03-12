@@ -1,0 +1,203 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── Build cross-platform binaries in parallel ──
+  build:
+    name: Build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release -p rigsql-cli --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: matrix.archive == 'tar.gz'
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          ASSET_NAME="rigsql-${TAG}-${{ matrix.target }}.tar.gz"
+          tar czf "${ASSET_NAME}" -C target/${{ matrix.target }}/release rigsql
+          if command -v sha256sum &>/dev/null; then
+            sha256sum "${ASSET_NAME}" > "${ASSET_NAME}.sha256"
+          else
+            shasum -a 256 "${ASSET_NAME}" > "${ASSET_NAME}.sha256"
+          fi
+          echo "ASSET_NAME=${ASSET_NAME}" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assetName = "rigsql-${tag}-${{ matrix.target }}.zip"
+          Compress-Archive -Path "target/${{ matrix.target }}/release/rigsql.exe" -DestinationPath $assetName
+          $hash = (Get-FileHash $assetName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $assetName" | Out-File -Encoding utf8 "${assetName}.sha256"
+          "ASSET_NAME=$assetName" | Out-File -Append $env:GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            rigsql-*.${{ matrix.archive }}
+            rigsql-*.${{ matrix.archive }}.sha256
+
+  # ── Create GitHub Release with all binaries ──
+  release:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cat *.sha256 > checksums.txt
+          echo "Checksums:"
+          cat checksums.txt
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            rigsql-*.tar.gz
+            rigsql-*.zip
+            checksums.txt
+
+  # ── Publish to crates.io ──
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify version matches tag
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match Cargo.toml version ($CARGO_VERSION)"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Publish all crates
+        run: |
+          PUBLISHED=false
+
+          wait_for_rate_limit() {
+            local output=$1
+            local retry_after
+            retry_after=$(echo "$output" | grep -oP 'try again after \K[^"]+(?= and)')
+            if [ -n "$retry_after" ]; then
+              local target_epoch
+              target_epoch=$(date -d "$retry_after" +%s 2>/dev/null) || return 1
+              local now_epoch
+              now_epoch=$(date +%s)
+              local wait_secs=$(( target_epoch - now_epoch + 5 ))
+              if [ $wait_secs -gt 0 ] && [ $wait_secs -lt 900 ]; then
+                echo "Rate limited. Waiting ${wait_secs}s until $retry_after..."
+                sleep $wait_secs
+                return 0
+              fi
+            fi
+            return 1
+          }
+
+          publish_crate() {
+            local crate=$1
+            local max_retries=5
+            local retry=0
+            PUBLISHED=false
+            while [ $retry -lt $max_retries ]; do
+              echo "Publishing $crate (attempt $((retry + 1))/$max_retries)..."
+              local output
+              output=$(cargo publish -p "$crate" 2>&1) && {
+                echo "$crate published successfully"
+                PUBLISHED=true
+                return 0
+              }
+              echo "$output"
+              if echo "$output" | grep -qE "already (uploaded|exists)"; then
+                echo "$crate already published, skipping"
+                return 0
+              fi
+              retry=$((retry + 1))
+              if [ $retry -lt $max_retries ]; then
+                if ! wait_for_rate_limit "$output"; then
+                  local wait=$((60 * retry))
+                  echo "Waiting ${wait}s before retry..."
+                  sleep $wait
+                fi
+              fi
+            done
+            echo "Failed to publish $crate after $max_retries attempts"
+            return 1
+          }
+
+          CRATES=(
+            rigsql-core
+            rigsql-lexer
+            rigsql-parser
+            rigsql-dialects
+            rigsql-i18n
+            rigsql-rules
+            rigsql-config
+            rigsql-output
+            rigsql-cli
+          )
+
+          for crate in "${CRATES[@]}"; do
+            publish_crate "$crate"
+            if [ "$PUBLISHED" = true ]; then
+              sleep 60
+            fi
+          done

@@ -1,7 +1,7 @@
 use rigsql_core::SegmentType;
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::LintViolation;
+use crate::violation::{LintViolation, SourceEdit};
 
 /// CV06: Statements must end with a semicolon.
 #[derive(Debug, Default)]
@@ -34,6 +34,11 @@ impl Rule for RuleCV06 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
+        // In TSQL, semicolons are optional in most contexts
+        if ctx.dialect == "tsql" {
+            return vec![];
+        }
+
         let children = ctx.segment.children();
         if children.is_empty() {
             return vec![];
@@ -48,13 +53,49 @@ impl Rule for RuleCV06 {
 
         if !has_semicolon {
             let span = ctx.segment.span();
-            return vec![LintViolation::new(
+            // Find the end of the last non-trivia child for insertion point
+            let insert_pos = children
+                .iter()
+                .rev()
+                .find(|s| !s.segment_type().is_trivia())
+                .map(|s| s.span().end)
+                .unwrap_or(span.end);
+            return vec![LintViolation::with_fix_and_msg_key(
                 self.code(),
                 "Statement is not terminated with a semicolon.",
                 rigsql_core::Span::new(span.end, span.end),
+                vec![SourceEdit::insert(insert_pos, ";")],
+                "rules.CV06.msg",
+                vec![],
             )];
         }
 
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{lint_sql, lint_sql_with_dialect};
+
+    #[test]
+    fn test_cv06_flags_missing_semicolon() {
+        let violations = lint_sql("SELECT 1", RuleCV06);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, ";");
+    }
+
+    #[test]
+    fn test_cv06_accepts_semicolon() {
+        let violations = lint_sql("SELECT 1;", RuleCV06);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv06_skips_tsql() {
+        let violations = lint_sql_with_dialect("SELECT 1", RuleCV06, "tsql");
+        assert_eq!(violations.len(), 0);
     }
 }

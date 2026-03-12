@@ -1,7 +1,8 @@
 use rigsql_core::{Segment, SegmentType, TokenKind};
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::{LintViolation, SourceEdit};
+use crate::utils::check_capitalisation;
+use crate::violation::LintViolation;
 
 /// CP04: Boolean/Null literals must be consistently capitalised.
 ///
@@ -45,18 +46,47 @@ impl Rule for RuleCP04 {
         let text = t.token.text.as_str();
         let expected = text.to_ascii_uppercase();
 
-        if text != expected {
-            vec![LintViolation::with_fix(
-                self.code(),
-                format!(
-                    "Boolean/Null literals must be upper case. Found '{}' instead of '{}'.",
-                    text, expected
-                ),
-                t.token.span,
-                vec![SourceEdit::replace(t.token.span, expected.clone())],
-            )]
-        } else {
-            vec![]
-        }
+        check_capitalisation(
+            self.code(),
+            "Boolean/Null literals",
+            text,
+            &expected,
+            "upper",
+            t.token.span,
+        )
+        .into_iter()
+        .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::lint_sql;
+
+    #[test]
+    fn test_cp04_flags_lowercase_null() {
+        let violations = lint_sql("SELECT null", RuleCP04);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cp04_accepts_uppercase_null() {
+        let violations = lint_sql("SELECT NULL", RuleCP04);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp04_flags_lowercase_true() {
+        let violations = lint_sql("SELECT true", RuleCP04);
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cp04_fix_uppercases() {
+        let violations = lint_sql("SELECT null", RuleCP04);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "NULL");
     }
 }

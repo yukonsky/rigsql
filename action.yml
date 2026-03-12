@@ -1,0 +1,89 @@
+name: "rigsql SQL Linter"
+description: "Fast SQL linter with sqlfluff-compatible rules, written in Rust"
+branding:
+  icon: "check-circle"
+  color: "blue"
+
+inputs:
+  paths:
+    description: "Files or directories to lint (space-separated)"
+    required: false
+    default: "."
+  dialect:
+    description: "SQL dialect (ansi, postgres, tsql)"
+    required: false
+    default: "ansi"
+  format:
+    description: "Output format (human, json, sarif, github)"
+    required: false
+    default: "github"
+  version:
+    description: "rigsql version to install (e.g. 0.4.1, or 'latest')"
+    required: false
+    default: "latest"
+  token:
+    description: "GitHub token for downloading release assets (defaults to github.token)"
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install rigsql
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+
+        # Determine version tag
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          TAG=$(gh release view --repo yukonsky/rigsql --json tagName -q .tagName 2>/dev/null || echo "")
+        else
+          TAG="v${{ inputs.version }}"
+        fi
+
+        # Determine target triple
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64)    TARGET="x86_64-unknown-linux-gnu" ;  EXT="tar.gz" ;;
+          Linux-ARM64)  TARGET="aarch64-unknown-linux-gnu" ; EXT="tar.gz" ;;
+          macOS-X64)    TARGET="x86_64-apple-darwin" ;        EXT="tar.gz" ;;
+          macOS-ARM64)  TARGET="aarch64-apple-darwin" ;       EXT="tar.gz" ;;
+          Windows-X64)  TARGET="x86_64-pc-windows-msvc" ;    EXT="zip" ;;
+          *)            TARGET="" ;;
+        esac
+
+        INSTALLED=false
+
+        # Try downloading pre-built binary
+        if [ -n "$TAG" ] && [ -n "$TARGET" ]; then
+          ASSET="rigsql-${TAG}-${TARGET}.${EXT}"
+          echo "Downloading ${ASSET} from GitHub Releases..."
+          if gh release download "$TAG" --repo yukonsky/rigsql --pattern "$ASSET" 2>/dev/null; then
+            if [ "$EXT" = "tar.gz" ]; then
+              tar xzf "$ASSET"
+              install -m 755 rigsql /usr/local/bin/rigsql
+            else
+              unzip -o "$ASSET"
+              mv rigsql.exe "${RUNNER_TEMP}/rigsql.exe"
+              echo "${RUNNER_TEMP}" >> "$GITHUB_PATH"
+            fi
+            rm -f "$ASSET"
+            INSTALLED=true
+            echo "rigsql installed from pre-built binary"
+          fi
+        fi
+
+        # Fallback to cargo install
+        if [ "$INSTALLED" = false ]; then
+          echo "Pre-built binary not available, falling back to cargo install..."
+          if [ "${{ inputs.version }}" = "latest" ]; then
+            cargo install rigsql-cli
+          else
+            cargo install rigsql-cli --version "${{ inputs.version }}"
+          fi
+        fi
+
+    - name: Run rigsql lint
+      shell: bash
+      run: rigsql lint ${{ inputs.paths }} --dialect ${{ inputs.dialect }} --format ${{ inputs.format }}
