@@ -195,6 +195,7 @@ rules.CP05.msg: "%{category} must be %{policy} case. Found '%{found}' instead of
 
 # LT rules
 rules.LT01.msg: "Expected single space, found %{count} spaces."
+rules.LT01.msg.trailing: "Trailing whitespace."
 rules.LT02.msg.mixed: "Mixed tabs and spaces in indentation."
 rules.LT02.msg.not_multiple: "Indentation is not a multiple of %{size} spaces (found %{found} spaces)."
 rules.LT03.msg.before: "Missing space before operator."
