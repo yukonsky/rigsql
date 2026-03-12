@@ -17,10 +17,6 @@ use std::process;
 #[derive(Parser)]
 #[command(name = "rigsql", version, about = "Fast SQL linter written in Rust")]
 struct Cli {
-    /// Output locale (e.g. "en", "ja") — overrides config and system locale
-    #[arg(long, global = true)]
-    locale: Option<String>,
-
     #[command(subcommand)]
     command: Commands,
 }
@@ -36,6 +32,10 @@ enum Commands {
         #[arg(long)]
         dialect: Option<DialectArg>,
 
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
+
         /// Output format
         #[arg(long, default_value = "tree")]
         format: ParseFormat,
@@ -49,6 +49,10 @@ enum Commands {
         /// SQL dialect [default: ansi] (overrides config file)
         #[arg(long)]
         dialect: Option<DialectArg>,
+
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
 
         /// Output format
         #[arg(long, default_value = "human")]
@@ -68,6 +72,10 @@ enum Commands {
         #[arg(long)]
         dialect: Option<DialectArg>,
 
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
+
         /// Don't write changes, just show what would be fixed
         #[arg(long)]
         dry_run: bool,
@@ -78,7 +86,11 @@ enum Commands {
     },
 
     /// List available lint rules
-    Rules,
+    Rules {
+        /// Output locale (e.g. "en", "ja") — overrides config and system locale
+        #[arg(long)]
+        locale: Option<String>,
+    },
 
     /// Generate shell completions
     Completions {
@@ -171,11 +183,12 @@ fn main() {
         Commands::Parse {
             file,
             dialect,
+            locale,
             format,
         } => {
             let config = Config::load_for_path(Path::new(&file));
             let dialect = resolve_dialect(dialect, &config);
-            let locale = resolve_locale(cli.locale.as_deref(), &config, None);
+            let locale = resolve_locale(locale.as_deref(), &config, None);
             rigsql_i18n::set_locale(&locale);
             cmd_parse(&file, dialect, format);
         }
@@ -183,12 +196,13 @@ fn main() {
         Commands::Lint {
             files,
             dialect,
+            locale,
             format,
             no_color,
         } => {
             let (rules, config) = build_rules(&files);
             let dialect = resolve_dialect(dialect, &config);
-            let locale = resolve_locale(cli.locale.as_deref(), &config, Some(format));
+            let locale = resolve_locale(locale.as_deref(), &config, Some(format));
             rigsql_i18n::set_locale(&locale);
             let exit_code = cmd_lint(&files, dialect, format, no_color, rules);
             process::exit(exit_code);
@@ -197,20 +211,21 @@ fn main() {
         Commands::Fix {
             files,
             dialect,
+            locale,
             dry_run,
             force,
         } => {
             let (rules, config) = build_rules(&files);
             let dialect = resolve_dialect(dialect, &config);
-            let locale = resolve_locale(cli.locale.as_deref(), &config, None);
+            let locale = resolve_locale(locale.as_deref(), &config, None);
             rigsql_i18n::set_locale(&locale);
             let exit_code = cmd_fix(&files, dialect, dry_run, force, rules);
             process::exit(exit_code);
         }
 
-        Commands::Rules => {
+        Commands::Rules { locale } => {
             let config = Config::default();
-            let locale = resolve_locale(cli.locale.as_deref(), &config, None);
+            let locale = resolve_locale(locale.as_deref(), &config, None);
             rigsql_i18n::set_locale(&locale);
             cmd_rules();
         }
