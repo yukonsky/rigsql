@@ -117,6 +117,16 @@ pub fn insert_as_keyword_fix(children: &[Segment]) -> Vec<SourceEdit> {
         .unwrap_or_default()
 }
 
+/// Capitalise the first letter and lowercase the rest.
+/// Used by CP01 and CP03 for the `Capitalise` policy.
+pub fn capitalise(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) => c.to_uppercase().to_string() + &chars.as_str().to_lowercase(),
+        None => String::new(),
+    }
+}
+
 /// Check capitalisation of a token and return a violation if it doesn't match.
 /// Shared by CP01, CP04, CP05 to avoid duplicating violation creation.
 pub fn check_capitalisation(

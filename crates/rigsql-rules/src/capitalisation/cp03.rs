@@ -1,7 +1,9 @@
 use rigsql_core::{Segment, SegmentType, TokenKind};
 
+use super::CapitalisationPolicy;
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::violation::{LintViolation, SourceEdit};
+use crate::utils::check_capitalisation;
+use crate::violation::LintViolation;
 
 /// Built-in SQL function names (sorted alphabetically for binary_search).
 const BUILTIN_FUNCTIONS: &[&str] = &[
@@ -145,9 +147,19 @@ const BUILTIN_FUNCTIONS: &[&str] = &[
 
 /// CP03: Function names must be consistently capitalised.
 ///
-/// By default, expects lower case function names.
-#[derive(Debug, Default)]
-pub struct RuleCP03;
+/// By default, expects UPPER case function names (sqlfluff-compatible).
+#[derive(Debug)]
+pub struct RuleCP03 {
+    pub policy: CapitalisationPolicy,
+}
+
+impl Default for RuleCP03 {
+    fn default() -> Self {
+        Self {
+            policy: CapitalisationPolicy::Upper,
+        }
+    }
+}
 
 impl Rule for RuleCP03 {
     fn code(&self) -> &'static str {
@@ -174,6 +186,12 @@ impl Rule for RuleCP03 {
         CrawlType::Segment(vec![SegmentType::FunctionCall])
     }
 
+    fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
+        if let Some(policy) = settings.get("capitalisation_policy") {
+            self.policy = CapitalisationPolicy::from_config(policy);
+        }
+    }
+
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
         // FunctionCall's first child should be the function name (Identifier)
         let children = ctx.segment.children();
@@ -190,7 +208,6 @@ impl Rule for RuleCP03 {
             return vec![];
         }
 
-        // Check: function names should be consistent (default: lower)
         let text = t.token.text.as_str();
         let upper = text.to_ascii_uppercase();
 
@@ -199,30 +216,22 @@ impl Rule for RuleCP03 {
             return vec![];
         }
 
-        // Skip if it's all upper or all lower (both are acceptable in many configs)
-        // Default: we don't enforce function name case (many projects use either)
-        // Only flag mixed case
-        let is_all_upper = text
-            .chars()
-            .all(|c| !c.is_ascii_alphabetic() || c.is_ascii_uppercase());
-        let is_all_lower = text
-            .chars()
-            .all(|c| !c.is_ascii_alphabetic() || c.is_ascii_lowercase());
-        if is_all_upper || is_all_lower {
-            return vec![];
-        }
+        let (expected, policy_name) = match self.policy {
+            CapitalisationPolicy::Upper => (upper, "upper"),
+            CapitalisationPolicy::Lower => (text.to_ascii_lowercase(), "lower"),
+            CapitalisationPolicy::Capitalise => (crate::utils::capitalise(text), "capitalised"),
+        };
 
-        vec![LintViolation::with_fix_and_msg_key(
+        check_capitalisation(
             self.code(),
-            format!(
-                "Function name '{}' has inconsistent capitalisation. Use all upper or all lower case.",
-                text
-            ),
+            "Function names",
+            text,
+            &expected,
+            policy_name,
             t.token.span,
-            vec![SourceEdit::replace(t.token.span, upper)],
-            "rules.CP03.msg",
-            vec![("name".to_string(), text.to_string())],
-        )]
+        )
+        .into_iter()
+        .collect()
     }
 }
 
@@ -253,26 +262,69 @@ mod tests {
     use crate::test_utils::lint_sql;
 
     #[test]
-    fn test_cp03_flags_mixed_case() {
-        let violations = lint_sql("SELECT Count(*) FROM t", RuleCP03);
+    fn test_cp03_flags_lowercase_function() {
+        // Default policy is upper, so lowercase should be flagged
+        let violations = lint_sql("SELECT count(*) FROM t", RuleCP03::default());
         assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "COUNT");
+    }
+
+    #[test]
+    fn test_cp03_flags_mixed_case() {
+        let violations = lint_sql("SELECT Count(*) FROM t", RuleCP03::default());
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "COUNT");
     }
 
     #[test]
     fn test_cp03_accepts_all_upper() {
-        let violations = lint_sql("SELECT COUNT(*) FROM t", RuleCP03);
+        let violations = lint_sql("SELECT COUNT(*) FROM t", RuleCP03::default());
         assert_eq!(violations.len(), 0);
     }
 
     #[test]
-    fn test_cp03_accepts_all_lower() {
-        let violations = lint_sql("SELECT count(*) FROM t", RuleCP03);
+    fn test_cp03_lower_policy_flags_upper() {
+        let rule = RuleCP03 {
+            policy: CapitalisationPolicy::Lower,
+        };
+        let violations = lint_sql("SELECT COUNT(*) FROM t", rule);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "count");
+    }
+
+    #[test]
+    fn test_cp03_lower_policy_accepts_lower() {
+        let rule = RuleCP03 {
+            policy: CapitalisationPolicy::Lower,
+        };
+        let violations = lint_sql("SELECT count(*) FROM t", rule);
         assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp03_capitalise_policy() {
+        let rule = RuleCP03 {
+            policy: CapitalisationPolicy::Capitalise,
+        };
+        let violations = lint_sql("SELECT count(*) FROM t", rule);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "Count");
     }
 
     #[test]
     fn test_cp03_skips_user_defined_function() {
-        let violations = lint_sql("SELECT GetDropdownOptions('a', 'b') FROM t", RuleCP03);
+        let violations = lint_sql(
+            "SELECT GetDropdownOptions('a', 'b') FROM t",
+            RuleCP03::default(),
+        );
         assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp03_flags_replace_function() {
+        // The issue from #32: replace should be flagged and fixed to REPLACE
+        let violations = lint_sql("SELECT replace(col, 'a', 'b') FROM t", RuleCP03::default());
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "REPLACE");
     }
 }
