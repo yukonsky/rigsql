@@ -24,7 +24,7 @@ pub fn default_rules() -> Vec<Box<dyn Rule>> {
         // Capitalisation
         Box::new(capitalisation::cp01::RuleCP01::default()),
         Box::new(capitalisation::cp02::RuleCP02::default()),
-        Box::new(capitalisation::cp03::RuleCP03),
+        Box::new(capitalisation::cp03::RuleCP03::default()),
         Box::new(capitalisation::cp04::RuleCP04),
         Box::new(capitalisation::cp05::RuleCP05::default()),
         // Layout
