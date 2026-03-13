@@ -1,5 +1,6 @@
 use rigsql_core::{Segment, SegmentType, TokenKind};
 
+use super::CapitalisationPolicy;
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
 use crate::utils::check_capitalisation;
 use crate::violation::LintViolation;
@@ -144,25 +145,18 @@ const BUILTIN_FUNCTIONS: &[&str] = &[
     "YEAR",
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FunctionCapPolicy {
-    Upper,
-    Lower,
-    Capitalise,
-}
-
 /// CP03: Function names must be consistently capitalised.
 ///
 /// By default, expects UPPER case function names (sqlfluff-compatible).
 #[derive(Debug)]
 pub struct RuleCP03 {
-    pub policy: FunctionCapPolicy,
+    pub policy: CapitalisationPolicy,
 }
 
 impl Default for RuleCP03 {
     fn default() -> Self {
         Self {
-            policy: FunctionCapPolicy::Upper,
+            policy: CapitalisationPolicy::Upper,
         }
     }
 }
@@ -194,11 +188,7 @@ impl Rule for RuleCP03 {
 
     fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
         if let Some(policy) = settings.get("capitalisation_policy") {
-            self.policy = match policy.as_str() {
-                "lower" => FunctionCapPolicy::Lower,
-                "capitalise" | "capitalize" => FunctionCapPolicy::Capitalise,
-                _ => FunctionCapPolicy::Upper,
-            };
+            self.policy = CapitalisationPolicy::from_config(policy);
         }
     }
 
@@ -227,9 +217,9 @@ impl Rule for RuleCP03 {
         }
 
         let (expected, policy_name) = match self.policy {
-            FunctionCapPolicy::Upper => (upper, "upper"),
-            FunctionCapPolicy::Lower => (text.to_ascii_lowercase(), "lower"),
-            FunctionCapPolicy::Capitalise => (capitalise(text), "capitalised"),
+            CapitalisationPolicy::Upper => (upper, "upper"),
+            CapitalisationPolicy::Lower => (text.to_ascii_lowercase(), "lower"),
+            CapitalisationPolicy::Capitalise => (crate::utils::capitalise(text), "capitalised"),
         };
 
         check_capitalisation(
@@ -266,14 +256,6 @@ impl RuleCP03 {
     }
 }
 
-fn capitalise(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) => c.to_uppercase().to_string() + &chars.as_str().to_lowercase(),
-        None => String::new(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,7 +285,7 @@ mod tests {
     #[test]
     fn test_cp03_lower_policy_flags_upper() {
         let rule = RuleCP03 {
-            policy: FunctionCapPolicy::Lower,
+            policy: CapitalisationPolicy::Lower,
         };
         let violations = lint_sql("SELECT COUNT(*) FROM t", rule);
         assert_eq!(violations.len(), 1);
@@ -313,7 +295,7 @@ mod tests {
     #[test]
     fn test_cp03_lower_policy_accepts_lower() {
         let rule = RuleCP03 {
-            policy: FunctionCapPolicy::Lower,
+            policy: CapitalisationPolicy::Lower,
         };
         let violations = lint_sql("SELECT count(*) FROM t", rule);
         assert_eq!(violations.len(), 0);
@@ -322,7 +304,7 @@ mod tests {
     #[test]
     fn test_cp03_capitalise_policy() {
         let rule = RuleCP03 {
-            policy: FunctionCapPolicy::Capitalise,
+            policy: CapitalisationPolicy::Capitalise,
         };
         let violations = lint_sql("SELECT count(*) FROM t", rule);
         assert_eq!(violations.len(), 1);

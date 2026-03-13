@@ -1,6 +1,7 @@
 use rigsql_core::{Segment, SegmentType, TokenKind};
 use rigsql_lexer::is_keyword;
 
+use super::CapitalisationPolicy;
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
 use crate::utils::check_capitalisation;
 use crate::violation::LintViolation;
@@ -11,13 +12,6 @@ use crate::violation::LintViolation;
 #[derive(Debug)]
 pub struct RuleCP01 {
     pub policy: CapitalisationPolicy,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CapitalisationPolicy {
-    Upper,
-    Lower,
-    Capitalise,
 }
 
 impl Default for RuleCP01 {
@@ -56,11 +50,7 @@ impl Rule for RuleCP01 {
 
     fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
         if let Some(policy) = settings.get("capitalisation_policy") {
-            self.policy = match policy.as_str() {
-                "lower" => CapitalisationPolicy::Lower,
-                "capitalise" | "capitalize" => CapitalisationPolicy::Capitalise,
-                _ => CapitalisationPolicy::Upper,
-            };
+            self.policy = CapitalisationPolicy::from_config(policy);
         }
     }
 
@@ -76,7 +66,7 @@ impl Rule for RuleCP01 {
         let (expected, policy_name) = match self.policy {
             CapitalisationPolicy::Upper => (text.to_ascii_uppercase(), "upper"),
             CapitalisationPolicy::Lower => (text.to_ascii_lowercase(), "lower"),
-            CapitalisationPolicy::Capitalise => (capitalise(text), "capitalised"),
+            CapitalisationPolicy::Capitalise => (crate::utils::capitalise(text), "capitalised"),
         };
 
         check_capitalisation(
@@ -89,14 +79,6 @@ impl Rule for RuleCP01 {
         )
         .into_iter()
         .collect()
-    }
-}
-
-fn capitalise(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) => c.to_uppercase().to_string() + &chars.as_str().to_lowercase(),
-        None => String::new(),
     }
 }
 
