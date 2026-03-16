@@ -322,7 +322,7 @@ Found 5 violation(s) in 1 file(s) (1 file(s) scanned).
   "version": "1.0",
   "tool": {
     "name": "rigsql",
-    "version": "0.5.2"
+    "version": "0.6.0"
   },
   "summary": {
     "files_scanned": 1,
@@ -355,7 +355,7 @@ Found 5 violation(s) in 1 file(s) (1 file(s) scanned).
 ## GitHub Action
 
 ```yaml
-- uses: yukonsky/rigsql@v0.5.2
+- uses: yukonsky/rigsql@v0.6.0
   with:
     paths: "./queries/"
     dialect: "ansi"
