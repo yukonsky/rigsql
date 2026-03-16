@@ -138,8 +138,10 @@ fn is_trailing_comma(ctx: &RuleContext) -> bool {
 ///
 /// Pattern: `col1\n    , col2` → `col1,\n    col2`
 ///
-/// 1. Delete the comma and any whitespace immediately after it
-/// 2. Insert comma after the last non-trivia element before the newline
+/// Emits a single edit that replaces the region from the last non-trivia element
+/// to the end of the comma (+ trailing whitespace) with a comma followed by the
+/// preserved content (newlines, comments) and indentation. Using a single edit
+/// avoids conflicts with LT01 trailing-whitespace fixes that target the same region.
 fn build_leading_to_trailing_fix(ctx: &RuleContext) -> Vec<SourceEdit> {
     let comma_span = ctx.segment.span();
 
@@ -200,19 +202,35 @@ fn build_leading_to_trailing_fix(ctx: &RuleContext) -> Vec<SourceEdit> {
         }
     }
 
-    // Reconstruct proper indentation after the comma removal
-    // Keep the newline and original indentation, just without the comma
+    // Build a single combined edit covering [insert_pos, delete_end).
+    // Replacement = "," + content between insert_pos and delete_start + indent.
+    // The content between insert_pos and delete_start contains newlines, comments,
+    // and potentially trailing whitespace. We strip trailing horizontal whitespace
+    // before each newline to avoid creating new LT01 violations.
+    let between = &ctx.source[insert_pos as usize..delete_start as usize];
+    let between_clean = strip_trailing_hws_before_newlines(between);
+
     let indent_size = (delete_end - comma_span.end) as usize;
     let original_indent_size = (comma_span.start - delete_start) as usize;
     let total_indent = original_indent_size + indent_size;
     let indent = " ".repeat(total_indent);
 
-    vec![
-        // Insert comma after the previous element
-        SourceEdit::insert(insert_pos, ","),
-        // Replace the whitespace + comma + whitespace with just whitespace
-        SourceEdit::replace(rigsql_core::Span::new(delete_start, delete_end), indent),
-    ]
+    vec![SourceEdit::replace(
+        rigsql_core::Span::new(insert_pos, delete_end),
+        format!(",{}{}", between_clean, indent),
+    )]
+}
+
+/// Strip trailing horizontal whitespace (spaces/tabs) before each newline in a string.
+fn strip_trailing_hws_before_newlines(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for (i, line) in s.split('\n').enumerate() {
+        if i > 0 {
+            result.push('\n');
+        }
+        result.push_str(line.trim_end_matches([' ', '\t']));
+    }
+    result
 }
 
 /// Build fix edits to convert trailing comma to leading comma.
@@ -267,5 +285,41 @@ mod tests {
         let violations = lint_sql("SELECT a\n    ,b FROM t", RuleLT04::default());
         assert!(!violations.is_empty());
         assert!(violations.iter().all(|v| v.rule_code == "LT04"));
+    }
+
+    #[test]
+    fn test_lt04_fix_leading_comma_after_end_with_trailing_whitespace() {
+        // Regression: comma on its own line after `end` with trailing whitespace
+        // was being deleted instead of moved to trailing position, because the
+        // LT04 insert edit conflicted with LT01 trailing-whitespace edit.
+        use crate::rule::apply_fixes;
+
+        let sql = "SELECT\n  end   \n,\n    NextColumn\nFROM t";
+        let violations = lint_sql(sql, RuleLT04::default());
+        assert!(!violations.is_empty(), "should flag leading comma");
+
+        let fixed = apply_fixes(sql, &violations);
+        assert!(
+            fixed.contains("end,"),
+            "comma should be moved to trailing position after 'end': {fixed}"
+        );
+        assert!(
+            !fixed.contains("\n,"),
+            "standalone leading comma should be removed: {fixed}"
+        );
+    }
+
+    #[test]
+    fn test_lt04_fix_standalone_comma_line() {
+        use crate::rule::apply_fixes;
+
+        let sql = "SELECT\n    col1\n,\n    col2\nFROM t";
+        let violations = lint_sql(sql, RuleLT04::default());
+        let fixed = apply_fixes(sql, &violations);
+        assert!(fixed.contains("col1,"), "comma should trail col1: {fixed}");
+        assert!(
+            !fixed.contains("\n,"),
+            "standalone comma line should be gone: {fixed}"
+        );
     }
 }
