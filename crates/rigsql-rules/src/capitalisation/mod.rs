@@ -4,12 +4,13 @@ pub mod cp03;
 pub mod cp04;
 pub mod cp05;
 
-/// Shared capitalisation policy for CP01 (keywords) and CP03 (functions).
+/// Shared capitalisation policy for CP01, CP02, CP03, CP05.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapitalisationPolicy {
     Upper,
     Lower,
     Capitalise,
+    Consistent,
 }
 
 impl CapitalisationPolicy {
@@ -18,6 +19,7 @@ impl CapitalisationPolicy {
         match s {
             "lower" => Self::Lower,
             "capitalise" | "capitalize" => Self::Capitalise,
+            "consistent" => Self::Consistent,
             _ => Self::Upper,
         }
     }
