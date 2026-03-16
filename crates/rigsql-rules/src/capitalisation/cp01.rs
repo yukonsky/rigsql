@@ -3,7 +3,7 @@ use rigsql_lexer::is_keyword;
 
 use super::CapitalisationPolicy;
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::utils::check_capitalisation;
+use crate::utils::{check_capitalisation, collect_matching_tokens, determine_majority_case};
 use crate::violation::LintViolation;
 
 /// CP01: Keywords must be consistently capitalised.
@@ -45,7 +45,11 @@ impl Rule for RuleCP01 {
     }
 
     fn crawl_type(&self) -> CrawlType {
-        CrawlType::Segment(vec![SegmentType::Keyword, SegmentType::Unparsable])
+        if self.policy == CapitalisationPolicy::Consistent {
+            CrawlType::RootOnly
+        } else {
+            CrawlType::Segment(vec![SegmentType::Keyword, SegmentType::Unparsable])
+        }
     }
 
     fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
@@ -55,6 +59,10 @@ impl Rule for RuleCP01 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
+        if self.policy == CapitalisationPolicy::Consistent {
+            return self.eval_consistent(ctx);
+        }
+
         let Segment::Token(t) = ctx.segment else {
             return vec![];
         };
@@ -67,6 +75,7 @@ impl Rule for RuleCP01 {
             CapitalisationPolicy::Upper => (text.to_ascii_uppercase(), "upper"),
             CapitalisationPolicy::Lower => (text.to_ascii_lowercase(), "lower"),
             CapitalisationPolicy::Capitalise => (crate::utils::capitalise(text), "capitalised"),
+            CapitalisationPolicy::Consistent => unreachable!(),
         };
 
         check_capitalisation(
@@ -79,6 +88,46 @@ impl Rule for RuleCP01 {
         )
         .into_iter()
         .collect()
+    }
+}
+
+impl RuleCP01 {
+    fn eval_consistent(&self, ctx: &RuleContext) -> Vec<LintViolation> {
+        let mut tokens = Vec::new();
+        collect_matching_tokens(
+            ctx.root,
+            &|seg| {
+                if let Segment::Token(t) = seg {
+                    if t.segment_type == SegmentType::Keyword
+                        && t.token.kind == TokenKind::Word
+                        && is_keyword(&t.token.text)
+                    {
+                        return Some((t.token.text.to_string(), t.token.span));
+                    }
+                }
+                None
+            },
+            &mut tokens,
+        );
+
+        if tokens.is_empty() {
+            return vec![];
+        }
+
+        let majority = determine_majority_case(&tokens);
+        let mut violations = Vec::new();
+        for (text, span) in &tokens {
+            let expected = match majority {
+                "upper" => text.to_ascii_uppercase(),
+                _ => text.to_ascii_lowercase(),
+            };
+            if let Some(v) =
+                check_capitalisation(self.code(), "Keywords", text, &expected, majority, *span)
+            {
+                violations.push(v);
+            }
+        }
+        violations
     }
 }
 
@@ -114,6 +163,37 @@ mod tests {
         };
         let violations = lint_sql("SELECT 1", rule);
         assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn test_cp01_consistent_flags_minority() {
+        // 3 upper (SELECT, FROM, WHERE) vs 1 lower (and) → majority upper, flag "and"
+        let rule = RuleCP01 {
+            policy: CapitalisationPolicy::Consistent,
+        };
+        let violations = lint_sql("SELECT id FROM users where id = 1 AND name = 'a'", rule);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "WHERE");
+    }
+
+    #[test]
+    fn test_cp01_consistent_all_same_no_violation() {
+        let rule = RuleCP01 {
+            policy: CapitalisationPolicy::Consistent,
+        };
+        let violations = lint_sql("SELECT id FROM users WHERE id = 1", rule);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp01_consistent_majority_lower() {
+        // 3 lower (select, from, where) vs 1 upper (AND) → majority lower, flag "AND"
+        let rule = RuleCP01 {
+            policy: CapitalisationPolicy::Consistent,
+        };
+        let violations = lint_sql("select id from users where id = 1 AND name = 'a'", rule);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "and");
     }
 
     #[test]

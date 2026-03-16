@@ -2,7 +2,7 @@ use rigsql_core::{Segment, SegmentType, TokenKind};
 
 use super::CapitalisationPolicy;
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
-use crate::utils::check_capitalisation;
+use crate::utils::{check_capitalisation, determine_majority_case};
 use crate::violation::LintViolation;
 
 /// Built-in SQL function names (sorted alphabetically for binary_search).
@@ -183,7 +183,11 @@ impl Rule for RuleCP03 {
     }
 
     fn crawl_type(&self) -> CrawlType {
-        CrawlType::Segment(vec![SegmentType::FunctionCall])
+        if self.policy == CapitalisationPolicy::Consistent {
+            CrawlType::RootOnly
+        } else {
+            CrawlType::Segment(vec![SegmentType::FunctionCall])
+        }
     }
 
     fn configure(&mut self, settings: &std::collections::HashMap<String, String>) {
@@ -193,6 +197,10 @@ impl Rule for RuleCP03 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
+        if self.policy == CapitalisationPolicy::Consistent {
+            return self.eval_consistent(ctx);
+        }
+
         // FunctionCall's first child should be the function name (Identifier)
         let children = ctx.segment.children();
         if children.is_empty() {
@@ -220,6 +228,7 @@ impl Rule for RuleCP03 {
             CapitalisationPolicy::Upper => (upper, "upper"),
             CapitalisationPolicy::Lower => (text.to_ascii_lowercase(), "lower"),
             CapitalisationPolicy::Capitalise => (crate::utils::capitalise(text), "capitalised"),
+            CapitalisationPolicy::Consistent => unreachable!(),
         };
 
         check_capitalisation(
@@ -236,6 +245,55 @@ impl Rule for RuleCP03 {
 }
 
 impl RuleCP03 {
+    fn eval_consistent(&self, ctx: &RuleContext) -> Vec<LintViolation> {
+        let mut tokens = Vec::new();
+        Self::collect_builtin_function_names(ctx.root, &mut tokens);
+
+        if tokens.is_empty() {
+            return vec![];
+        }
+
+        let majority = determine_majority_case(&tokens);
+        let mut violations = Vec::new();
+        for (text, span) in &tokens {
+            let expected = match majority {
+                "upper" => text.to_ascii_uppercase(),
+                _ => text.to_ascii_lowercase(),
+            };
+            if let Some(v) = check_capitalisation(
+                self.code(),
+                "Function names",
+                text,
+                &expected,
+                majority,
+                *span,
+            ) {
+                violations.push(v);
+            }
+        }
+        violations
+    }
+
+    /// Recursively collect built-in function name tokens from the CST.
+    fn collect_builtin_function_names(
+        segment: &Segment,
+        out: &mut Vec<(String, rigsql_core::Span)>,
+    ) {
+        if segment.segment_type() == SegmentType::FunctionCall {
+            if let Some(Segment::Token(t)) = Self::find_function_name(segment.children()) {
+                if t.token.kind == TokenKind::Word {
+                    let upper = t.token.text.to_ascii_uppercase();
+                    if BUILTIN_FUNCTIONS.binary_search(&upper.as_str()).is_ok() {
+                        out.push((t.token.text.to_string(), t.token.span));
+                    }
+                }
+            }
+        }
+        for child in segment.children() {
+            Self::collect_builtin_function_names(child, out);
+        }
+    }
+
     fn find_function_name(children: &[Segment]) -> Option<&Segment> {
         for child in children {
             match child.segment_type() {
@@ -318,6 +376,37 @@ mod tests {
             RuleCP03::default(),
         );
         assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp03_consistent_flags_minority() {
+        // 2 upper (COUNT, SUM) vs 1 lower (avg) → majority upper, flag "avg"
+        let rule = RuleCP03 {
+            policy: CapitalisationPolicy::Consistent,
+        };
+        let violations = lint_sql("SELECT COUNT(*), SUM(x), avg(y) FROM t", rule);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "AVG");
+    }
+
+    #[test]
+    fn test_cp03_consistent_all_same_no_violation() {
+        let rule = RuleCP03 {
+            policy: CapitalisationPolicy::Consistent,
+        };
+        let violations = lint_sql("SELECT COUNT(*), SUM(x) FROM t", rule);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cp03_consistent_majority_lower() {
+        // 2 lower (count, sum) vs 1 upper (AVG) → majority lower, flag "AVG"
+        let rule = RuleCP03 {
+            policy: CapitalisationPolicy::Consistent,
+        };
+        let violations = lint_sql("SELECT count(*), sum(x), AVG(y) FROM t", rule);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "avg");
     }
 
     #[test]

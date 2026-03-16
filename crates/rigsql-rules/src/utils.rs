@@ -220,3 +220,44 @@ pub fn find_keyword_in_children<'a>(
         }
     })
 }
+
+/// Collect all leaf tokens from a CST that match a filter predicate.
+/// Used by CP rules in `consistent` mode to gather all tokens of a category.
+pub fn collect_matching_tokens<F>(segment: &Segment, filter: &F, out: &mut Vec<(String, Span)>)
+where
+    F: Fn(&Segment) -> Option<(String, Span)>,
+{
+    if let Some(pair) = filter(segment) {
+        out.push(pair);
+    }
+    for child in segment.children() {
+        collect_matching_tokens(child, filter, out);
+    }
+}
+
+/// Determine the majority case from a list of token texts.
+/// Returns `"upper"` or `"lower"`. Mixed-case tokens are skipped (always violations).
+/// On tie, defaults to `"upper"`.
+pub fn determine_majority_case(tokens: &[(String, Span)]) -> &'static str {
+    let mut upper_count = 0u32;
+    let mut lower_count = 0u32;
+    for (text, _) in tokens {
+        let is_all_upper = text
+            .chars()
+            .all(|c| !c.is_ascii_alphabetic() || c.is_ascii_uppercase());
+        let is_all_lower = text
+            .chars()
+            .all(|c| !c.is_ascii_alphabetic() || c.is_ascii_lowercase());
+        if is_all_upper {
+            upper_count += 1;
+        } else if is_all_lower {
+            lower_count += 1;
+        }
+        // mixed-case: skip (they'll be flagged regardless)
+    }
+    if lower_count > upper_count {
+        "lower"
+    } else {
+        "upper"
+    }
+}
