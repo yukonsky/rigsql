@@ -228,7 +228,7 @@ fn strip_trailing_hws_before_newlines(s: &str) -> String {
         if i > 0 {
             result.push('\n');
         }
-        result.push_str(line.trim_end_matches(|c: char| c == ' ' || c == '\t'));
+        result.push_str(line.trim_end_matches([' ', '\t']));
     }
     result
 }
