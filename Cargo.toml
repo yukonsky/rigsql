@@ -47,7 +47,7 @@ rust-i18n = "3"
 sys-locale = "0.3"
 ignore = "0.4"
 insta = "1"
-toml = "0.9"
+toml = "1.0"
 
 [profile.release]
 lto = true
