@@ -7,4 +7,4 @@ repository.workspace = true
 description = "Internationalization support for the rigsql SQL linter"
 
 [dependencies]
-rust-i18n = "3"
+rust-i18n = "4"
