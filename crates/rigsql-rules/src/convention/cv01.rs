@@ -1,4 +1,4 @@
-use rigsql_core::TokenKind;
+use rigsql_core::{Segment, SegmentType, TokenKind};
 
 use crate::rule::{CrawlType, Rule, RuleContext, RuleGroup};
 use crate::violation::{LintViolation, SourceEdit};
@@ -53,8 +53,9 @@ impl Rule for RuleCV01 {
     }
     fn explanation(&self) -> &'static str {
         "SQL has two not-equal operators: '!=' and '<>'. Using one consistently \
-         improves readability. The ANSI standard uses '<>' but '!=' is more common \
-         in modern SQL and programming."
+         improves readability. By default, the first style encountered in a file \
+         is preferred; set `preferred_not_equal` to `c_style` or `ansi` to \
+         enforce a specific style."
     }
     fn groups(&self) -> &[RuleGroup] {
         &[RuleGroup::Convention]
@@ -74,10 +75,36 @@ impl Rule for RuleCV01 {
     }
 
     fn crawl_type(&self) -> CrawlType {
-        CrawlType::RootOnly
+        if self.preferred == NotEqualStyle::Consistent {
+            CrawlType::RootOnly
+        } else {
+            CrawlType::Segment(vec![SegmentType::ComparisonOperator])
+        }
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
+        let target = match self.preferred.as_str() {
+            Some(pinned) => pinned,
+            None => return self.eval_consistent(ctx),
+        };
+
+        let Segment::Token(t) = ctx.segment else {
+            return vec![];
+        };
+        if t.token.kind != TokenKind::Neq {
+            return vec![];
+        }
+
+        if t.token.text.as_str() == target {
+            return vec![];
+        }
+
+        vec![violation_for(self.code(), &t.token, target)]
+    }
+}
+
+impl RuleCV01 {
+    fn eval_consistent(&self, ctx: &RuleContext) -> Vec<LintViolation> {
         let neq_tokens: Vec<_> = ctx
             .root
             .tokens()
@@ -85,36 +112,34 @@ impl Rule for RuleCV01 {
             .filter(|t| t.kind == TokenKind::Neq)
             .collect();
 
-        let target = match self.preferred.as_str() {
-            Some(pinned) => pinned,
-            None => match neq_tokens.first() {
-                Some(first) if first.text.as_str() == "<>" => "<>",
-                Some(_) => "!=",
-                None => return vec![],
-            },
-        };
-
-        let (msg, key) = if target == "!=" {
-            ("Use '!=' instead of '<>'.", "rules.CV01.msg.use_ne")
-        } else {
-            ("Use '<>' instead of '!='.", "rules.CV01.msg.use_ltgt")
+        let target = match neq_tokens.first() {
+            Some(first) if first.text.as_str() == "<>" => "<>",
+            Some(_) => "!=",
+            None => return vec![],
         };
 
         neq_tokens
             .into_iter()
             .filter(|t| t.text.as_str() != target)
-            .map(|t| {
-                LintViolation::with_fix_and_msg_key(
-                    self.code(),
-                    msg,
-                    t.span,
-                    vec![SourceEdit::replace(t.span, target)],
-                    key,
-                    vec![],
-                )
-            })
+            .map(|t| violation_for(self.code(), t, target))
             .collect()
     }
+}
+
+fn violation_for(code: &'static str, token: &rigsql_core::Token, target: &str) -> LintViolation {
+    let (msg, key) = if target == "!=" {
+        ("Use '!=' instead of '<>'.", "rules.CV01.msg.use_ne")
+    } else {
+        ("Use '<>' instead of '!='.", "rules.CV01.msg.use_ltgt")
+    };
+    LintViolation::with_fix_and_msg_key(
+        code,
+        msg,
+        token.span,
+        vec![SourceEdit::replace(token.span, target)],
+        key,
+        vec![],
+    )
 }
 
 #[cfg(test)]
