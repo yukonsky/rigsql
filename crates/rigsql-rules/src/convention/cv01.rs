@@ -5,7 +5,9 @@ use crate::violation::{LintViolation, SourceEdit};
 
 /// CV01: Use consistent not-equal operator.
 ///
-/// By default, prefer `!=` over `<>`.
+/// By default, flag inconsistent use within a file. When mixed styles are
+/// present, the first occurrence wins. Users can pin a specific style via
+/// the `preferred_not_equal` setting.
 #[derive(Debug)]
 pub struct RuleCV01 {
     pub preferred: NotEqualStyle,
@@ -13,6 +15,8 @@ pub struct RuleCV01 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotEqualStyle {
+    /// Match whichever style appears first in the file.
+    Consistent,
     /// Prefer `!=`
     CStyle,
     /// Prefer `<>`
@@ -22,7 +26,7 @@ pub enum NotEqualStyle {
 impl Default for RuleCV01 {
     fn default() -> Self {
         Self {
-            preferred: NotEqualStyle::CStyle,
+            preferred: NotEqualStyle::Consistent,
         }
     }
 }
@@ -53,7 +57,8 @@ impl Rule for RuleCV01 {
         if let Some(val) = settings.get("preferred_not_equal") {
             self.preferred = match val.as_str() {
                 "ansi" | "<>" => NotEqualStyle::AnsiStyle,
-                _ => NotEqualStyle::CStyle,
+                "c_style" | "cstyle" | "!=" => NotEqualStyle::CStyle,
+                _ => NotEqualStyle::Consistent,
             };
         }
     }
@@ -71,30 +76,53 @@ impl Rule for RuleCV01 {
         }
 
         let text = t.token.text.as_str();
-        match self.preferred {
-            NotEqualStyle::CStyle if text == "<>" => {
-                vec![LintViolation::with_fix_and_msg_key(
-                    self.code(),
-                    "Use '!=' instead of '<>'.",
-                    t.token.span,
-                    vec![SourceEdit::replace(t.token.span, "!=")],
-                    "rules.CV01.msg.use_ne",
-                    vec![],
-                )]
-            }
-            NotEqualStyle::AnsiStyle if text == "!=" => {
-                vec![LintViolation::with_fix_and_msg_key(
-                    self.code(),
-                    "Use '<>' instead of '!='.",
-                    t.token.span,
-                    vec![SourceEdit::replace(t.token.span, "<>")],
-                    "rules.CV01.msg.use_ltgt",
-                    vec![],
-                )]
-            }
-            _ => vec![],
+        let target = match self.preferred {
+            NotEqualStyle::CStyle => "!=",
+            NotEqualStyle::AnsiStyle => "<>",
+            NotEqualStyle::Consistent => match first_neq_style(ctx.root) {
+                Some(first) => first,
+                None => return vec![],
+            },
+        };
+
+        if text == target {
+            return vec![];
         }
+
+        let (msg, key) = if target == "!=" {
+            ("Use '!=' instead of '<>'.", "rules.CV01.msg.use_ne")
+        } else {
+            ("Use '<>' instead of '!='.", "rules.CV01.msg.use_ltgt")
+        };
+
+        vec![LintViolation::with_fix_and_msg_key(
+            self.code(),
+            msg,
+            t.token.span,
+            vec![SourceEdit::replace(t.token.span, target)],
+            key,
+            vec![],
+        )]
     }
+}
+
+/// Return the text of the first `!=` or `<>` token encountered in the tree.
+fn first_neq_style(root: &Segment) -> Option<&'static str> {
+    let mut found: Option<&'static str> = None;
+    root.walk(&mut |seg| {
+        if found.is_some() {
+            return;
+        }
+        if let Segment::Token(t) = seg {
+            if t.token.kind == TokenKind::Neq {
+                found = Some(match t.token.text.as_str() {
+                    "<>" => "<>",
+                    _ => "!=",
+                });
+            }
+        }
+    });
+    found
 }
 
 #[cfg(test)]
@@ -103,15 +131,44 @@ mod tests {
     use crate::test_utils::lint_sql;
 
     #[test]
-    fn test_cv01_flags_ansi_neq() {
+    fn test_cv01_consistent_accepts_ansi_only() {
         let violations = lint_sql("SELECT * FROM t WHERE a <> b", RuleCV01::default());
-        assert_eq!(violations.len(), 1);
+        assert_eq!(violations.len(), 0);
     }
 
     #[test]
-    fn test_cv01_accepts_cstyle_neq() {
+    fn test_cv01_consistent_accepts_cstyle_only() {
         let violations = lint_sql("SELECT * FROM t WHERE a != b", RuleCV01::default());
         assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv01_consistent_flags_mixed_first_ansi_wins() {
+        let violations = lint_sql(
+            "SELECT * FROM t WHERE a <> b AND c != d",
+            RuleCV01::default(),
+        );
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "<>");
+    }
+
+    #[test]
+    fn test_cv01_consistent_flags_mixed_first_cstyle_wins() {
+        let violations = lint_sql(
+            "SELECT * FROM t WHERE a != b AND c <> d",
+            RuleCV01::default(),
+        );
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "!=");
+    }
+
+    #[test]
+    fn test_cv01_cstyle_policy_flags_ansi() {
+        let rule = RuleCV01 {
+            preferred: NotEqualStyle::CStyle,
+        };
+        let violations = lint_sql("SELECT * FROM t WHERE a <> b", rule);
+        assert_eq!(violations.len(), 1);
     }
 
     #[test]
