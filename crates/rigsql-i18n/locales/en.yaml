@@ -44,7 +44,7 @@ rules.CP05.description: "Data type names must be consistently capitalised."
 rules.CP05.explanation: "Data type names (INT, VARCHAR, TEXT, etc.) should use consistent capitalisation. Most style guides recommend upper case for data types to distinguish them from column names."
 
 rules.CV01.description: "Consistent not-equal operator."
-rules.CV01.explanation: "SQL has two not-equal operators: '!=' and '<>'. Using one consistently improves readability. The ANSI standard uses '<>' but '!=' is more common in modern SQL and programming."
+rules.CV01.explanation: "SQL has two not-equal operators: '!=' and '<>'. Using one consistently improves readability. By default, the first style encountered in a file is preferred; set `preferred_not_equal` to `c_style` or `ansi` to enforce a specific style."
 rules.CV02.description: "Use COALESCE instead of IFNULL or NVL."
 rules.CV02.explanation: "COALESCE is the ANSI SQL standard function for handling NULL values. IFNULL (MySQL) and NVL (Oracle) are database-specific alternatives. Using COALESCE improves portability and consistency."
 rules.CV03.description: "Trailing comma in SELECT clause."
