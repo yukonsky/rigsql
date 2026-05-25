@@ -175,7 +175,8 @@ mod tests {
 
     #[test]
     fn test_cv05_flags_multi_column_update_where() {
-        // Multi-column SET should be skipped; nested subquery comparison flagged.
+        // Both `SET` assignments must be skipped, but the WHERE comparison
+        // with NULL should still produce exactly one violation.
         let violations = lint_sql("UPDATE t SET a = NULL, b = NULL WHERE c = NULL", RuleCV05);
         assert_eq!(violations.len(), 1);
     }
