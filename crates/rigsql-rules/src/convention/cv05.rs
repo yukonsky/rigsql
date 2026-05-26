@@ -36,6 +36,17 @@ impl Rule for RuleCV05 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
+        // Skip assignments inside SET clauses (UPDATE ... SET col = NULL,
+        // ON CONFLICT DO UPDATE SET col = NULL). The parser reuses
+        // BinaryExpression for these assignments, but `=` here is assignment,
+        // not comparison.
+        if ctx
+            .parent
+            .is_some_and(|p| p.segment_type() == SegmentType::SetClause)
+        {
+            return vec![];
+        }
+
         let children = ctx.segment.children();
 
         // Look for pattern: <expr> <comparison_op> NULL
@@ -123,7 +134,7 @@ fn is_null_literal(seg: &Segment) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::lint_sql;
+    use crate::test_utils::{lint_sql, lint_sql_with_dialect};
 
     #[test]
     fn test_cv05_flags_equals_null() {
@@ -137,5 +148,36 @@ mod tests {
     fn test_cv05_accepts_is_null() {
         let violations = lint_sql("SELECT * FROM t WHERE a IS NULL", RuleCV05);
         assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv05_accepts_update_set_null_assignment() {
+        // `SET col = NULL` is an assignment in UPDATE, not a comparison.
+        let violations = lint_sql("UPDATE t SET a = NULL WHERE id = 1", RuleCV05);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv05_accepts_tsql_update_set_null_assignment() {
+        let sql = "UPDATE dbo.TestTable\nSET TestColumn = NULL\nWHERE ID = 1;";
+        let violations = lint_sql_with_dialect(sql, RuleCV05, "tsql");
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv05_flags_where_in_update() {
+        // The assignment is fine, but the WHERE comparison with NULL should
+        // still be reported.
+        let violations = lint_sql("UPDATE t SET a = 1 WHERE b = NULL", RuleCV05);
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].fixes[0].new_text, "IS NULL");
+    }
+
+    #[test]
+    fn test_cv05_flags_multi_column_update_where() {
+        // Both `SET` assignments must be skipped, but the WHERE comparison
+        // with NULL should still produce exactly one violation.
+        let violations = lint_sql("UPDATE t SET a = NULL, b = NULL WHERE c = NULL", RuleCV05);
+        assert_eq!(violations.len(), 1);
     }
 }
