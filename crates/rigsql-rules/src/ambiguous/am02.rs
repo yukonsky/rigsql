@@ -37,6 +37,13 @@ impl Rule for RuleAM02 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
+        // T-SQL (SQL Server) does not support `UNION DISTINCT` syntax — a bare
+        // UNION is already the explicit deduplicating form, so there is nothing
+        // to make explicit. Flagging it would suggest an unsatisfiable fix.
+        if ctx.dialect == "tsql" {
+            return vec![];
+        }
+
         let mut violations = Vec::new();
         find_bare_unions(ctx.root, &mut violations);
         violations
@@ -84,7 +91,7 @@ fn find_bare_unions(segment: &Segment, violations: &mut Vec<LintViolation>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::lint_sql;
+    use crate::test_utils::{lint_sql, lint_sql_with_dialect};
 
     #[test]
     fn test_am02_flags_bare_union() {
@@ -102,6 +109,15 @@ mod tests {
     #[test]
     fn test_am02_accepts_union_distinct() {
         let violations = lint_sql("SELECT a FROM t UNION DISTINCT SELECT b FROM u", RuleAM02);
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_am02_ignores_bare_union_in_tsql() {
+        // T-SQL does not support `UNION DISTINCT`, so a bare UNION must not be
+        // flagged — the implied fix would be a syntax error in SQL Server.
+        let violations =
+            lint_sql_with_dialect("SELECT a FROM t UNION SELECT b FROM u", RuleAM02, "tsql");
         assert_eq!(violations.len(), 0);
     }
 }

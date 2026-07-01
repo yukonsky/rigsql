@@ -321,10 +321,13 @@ fn parse_noqa_comment(line: &str) -> Option<NoqaSpec> {
     }
 
     if let Some(rest) = after.strip_prefix(':') {
+        // Keep only the rule code from each comma-separated entry, ignoring any
+        // trailing free text (e.g. `-- noqa: AM02 (explanatory note)`), so an
+        // inline rationale can live next to the directive.
         let codes: Vec<String> = rest
             .split(',')
-            .map(|s| s.trim().to_uppercase())
-            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.split_whitespace().next())
+            .map(|s| s.to_uppercase())
             .collect();
         if codes.is_empty() {
             Some(NoqaSpec::All)
@@ -361,6 +364,26 @@ mod tests {
     #[test]
     fn test_parse_noqa_none() {
         assert!(parse_noqa_comment("SELECT 1").is_none());
+    }
+
+    #[test]
+    fn test_parse_noqa_specific_with_trailing_text() {
+        match parse_noqa_comment("SELECT 1 -- noqa: AM02 (some explanatory text)") {
+            Some(NoqaSpec::Rules(codes)) => {
+                assert_eq!(codes, vec!["AM02"]);
+            }
+            _ => panic!("Expected NoqaSpec::Rules"),
+        }
+    }
+
+    #[test]
+    fn test_parse_noqa_multiple_with_trailing_text() {
+        match parse_noqa_comment("SELECT 1 -- noqa: CP01, LT01 (rationale here)") {
+            Some(NoqaSpec::Rules(codes)) => {
+                assert_eq!(codes, vec!["CP01", "LT01"]);
+            }
+            _ => panic!("Expected NoqaSpec::Rules"),
+        }
     }
 
     #[test]
