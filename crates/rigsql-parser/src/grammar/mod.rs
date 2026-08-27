@@ -1656,14 +1656,24 @@ pub trait Grammar: Send + Sync {
             if let Some(args) = self.parse_paren_block(ctx) {
                 children.push(args);
             }
+
+            // Ordered-set aggregate: `f(...) WITHIN GROUP (ORDER BY ...)`
+            // (STRING_AGG, PERCENTILE_CONT, PERCENTILE_DISC, LISTAGG, ...)
+            // `peek_keywords` looks past trivia without consuming it, so the
+            // trivia is only eaten once the suffix is known to be there.
+            if ctx.peek_keywords(&["WITHIN", "GROUP"]) {
+                children.extend(eat_trivia_segments(ctx));
+                if let Some(wg) = self.parse_within_group_clause(ctx) {
+                    children.push(wg);
+                }
+            }
+
             let func = Segment::Node(NodeSegment::new(SegmentType::FunctionCall, children));
 
             // Check for OVER clause (window function)
-            let save = ctx.save();
-            let trivia = eat_trivia_segments(ctx);
             if ctx.peek_keyword("OVER") {
                 let mut win_children = vec![func];
-                win_children.extend(trivia);
+                win_children.extend(eat_trivia_segments(ctx));
                 if let Some(over) = self.parse_over_clause(ctx) {
                     win_children.push(over);
                 }
@@ -1672,12 +1682,48 @@ pub trait Grammar: Send + Sync {
                     win_children,
                 )));
             }
-            ctx.restore(save);
 
             return Some(func);
         }
 
         Some(name)
+    }
+
+    /// Parse `WITHIN GROUP (ORDER BY ...)`, the ordered-set aggregate suffix.
+    ///
+    /// Used by STRING_AGG (T-SQL), LISTAGG, PERCENTILE_CONT and PERCENTILE_DISC.
+    /// Without this the `WITHIN` keyword is mistaken for an implicit alias and
+    /// the rest of the statement becomes unparsable.
+    fn parse_within_group_clause(&self, ctx: &mut ParseContext) -> Option<Segment> {
+        let mut children = Vec::new();
+
+        let within_kw = ctx.eat_keyword("WITHIN")?;
+        children.push(token_segment(within_kw, SegmentType::Keyword));
+        children.extend(eat_trivia_segments(ctx));
+
+        let group_kw = ctx.eat_keyword("GROUP")?;
+        children.push(token_segment(group_kw, SegmentType::Keyword));
+        children.extend(eat_trivia_segments(ctx));
+
+        let lp = ctx.eat_kind(TokenKind::LParen)?;
+        children.push(token_segment(lp, SegmentType::LParen));
+        children.extend(eat_trivia_segments(ctx));
+
+        if ctx.peek_keywords(&["ORDER", "BY"]) {
+            if let Some(ob) = self.parse_window_order_by(ctx) {
+                children.push(ob);
+                children.extend(eat_trivia_segments(ctx));
+            }
+        }
+
+        if let Some(rp) = ctx.eat_kind(TokenKind::RParen) {
+            children.push(token_segment(rp, SegmentType::RParen));
+        }
+
+        Some(Segment::Node(NodeSegment::new(
+            SegmentType::WithinGroupClause,
+            children,
+        )))
     }
 
     /// Parse OVER clause: `OVER (PARTITION BY ... ORDER BY ... ROWS/RANGE ...)`
@@ -2161,6 +2207,7 @@ const CLAUSE_KEYWORDS: &[&str] = &[
     "WHERE",
     "WHILE",
     "WITH",
+    "WITHIN",
 ];
 
 /// Case-insensitive binary search on a sorted uppercase keyword list.

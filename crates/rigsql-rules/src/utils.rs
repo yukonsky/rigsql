@@ -95,6 +95,7 @@ const NOT_ALIAS_KEYWORDS: &[&str] = &[
     "WHERE",
     "WHILE",
     "WITH",
+    "WITHIN",
 ];
 
 /// Check if the "alias name" in an AliasExpression is actually a misidentified
@@ -185,6 +186,10 @@ pub fn extract_alias_name(children: &[Segment]) -> Option<String> {
 
 /// Check if a segment ends with a Newline (possibly preceded by Whitespace).
 /// Used by layout rules (LT07, LT14) to detect newlines absorbed into clause bodies.
+///
+/// The trailing newline may sit several levels down: a `SELECT ... FROM t\n`
+/// keeps it inside the FROM clause, not as a direct child of the select
+/// statement, so the last non-whitespace child is followed recursively.
 pub fn has_trailing_newline(segment: &Segment) -> bool {
     for child in segment.children().iter().rev() {
         let st = child.segment_type();
@@ -194,7 +199,7 @@ pub fn has_trailing_newline(segment: &Segment) -> bool {
         if st == SegmentType::Whitespace {
             continue;
         }
-        return false;
+        return has_trailing_newline(child);
     }
     false
 }

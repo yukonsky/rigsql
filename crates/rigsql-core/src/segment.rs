@@ -176,6 +176,7 @@ pub enum SegmentType {
     OverClause,
     PartitionByClause,
     WindowFrameClause,
+    WithinGroupClause,
 
     // Alias
     AliasExpression,

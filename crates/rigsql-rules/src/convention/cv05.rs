@@ -36,14 +36,16 @@ impl Rule for RuleCV05 {
     }
 
     fn eval(&self, ctx: &RuleContext) -> Vec<LintViolation> {
-        // Skip assignments inside SET clauses (UPDATE ... SET col = NULL,
-        // ON CONFLICT DO UPDATE SET col = NULL). The parser reuses
-        // BinaryExpression for these assignments, but `=` here is assignment,
-        // not comparison.
-        if ctx
-            .parent
-            .is_some_and(|p| p.segment_type() == SegmentType::SetClause)
-        {
+        // Skip assignments, not comparisons. The parser reuses BinaryExpression
+        // for both, so `=` has to be disambiguated by the enclosing segment:
+        //   - SetClause:     UPDATE ... SET col = NULL
+        //   - ExecStatement: EXEC proc @param = NULL  (named parameter)
+        if ctx.parent.is_some_and(|p| {
+            matches!(
+                p.segment_type(),
+                SegmentType::SetClause | SegmentType::ExecStatement
+            )
+        }) {
             return vec![];
         }
 
@@ -160,6 +162,14 @@ mod tests {
     #[test]
     fn test_cv05_accepts_tsql_update_set_null_assignment() {
         let sql = "UPDATE dbo.TestTable\nSET TestColumn = NULL\nWHERE ID = 1;";
+        let violations = lint_sql_with_dialect(sql, RuleCV05, "tsql");
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
+    fn test_cv05_accepts_exec_null_parameter() {
+        // `EXEC proc @param = NULL` passes a named parameter, it does not compare.
+        let sql = "EXEC sys.sp_addextendedproperty @name = N'MS_Filter', @value = NULL;";
         let violations = lint_sql_with_dialect(sql, RuleCV05, "tsql");
         assert_eq!(violations.len(), 0);
     }
