@@ -105,6 +105,17 @@ mod tests {
     }
 
     #[test]
+    fn test_lt07_accepts_newline_after_nested_clause() {
+        // The newline before `)` is absorbed by the FROM clause rather than
+        // being a direct child of the select statement.
+        let violations = lint_sql(
+            "WITH cte AS (\n  SELECT 1\n  FROM t\n) SELECT * FROM cte",
+            RuleLT07,
+        );
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
     fn test_lt07_flags_inline_bracket() {
         let violations = lint_sql("WITH cte AS (SELECT 1) SELECT * FROM cte", RuleLT07);
         assert_eq!(violations.len(), 1);

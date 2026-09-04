@@ -534,6 +534,47 @@ mod tests {
         assert_eq!(cst.raw(), sql);
     }
 
+    // ── Ordered-set aggregates (WITHIN GROUP) ─────────────────────
+
+    #[test]
+    fn test_within_group_string_agg() {
+        let sql = "SELECT STRING_AGG(s.name, ',') WITHIN GROUP (ORDER BY s.sort) AS names\nFROM sites AS s";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert_eq!(cst.raw(), sql);
+        assert!(find_type(&cst, SegmentType::WithinGroupClause).is_some());
+        // WITHIN must not be swallowed as an implicit column alias.
+        assert!(find_type(&cst, SegmentType::FromClause).is_some());
+    }
+
+    #[test]
+    fn test_within_group_multiline() {
+        let sql = "SELECT STRING_AGG(s.name, ',')\n    WITHIN GROUP (ORDER BY s.sort, s.code DESC)\nFROM sites AS s";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert_eq!(cst.raw(), sql);
+        assert!(find_type(&cst, SegmentType::WithinGroupClause).is_some());
+    }
+
+    #[test]
+    fn test_within_group_with_over() {
+        let sql = "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t.amount) OVER (PARTITION BY t.shop) AS median\nFROM sales AS t";
+        let cst = parse_tsql(sql);
+        assert_no_unparsable(&cst);
+        assert_eq!(cst.raw(), sql);
+        assert!(find_type(&cst, SegmentType::WithinGroupClause).is_some());
+        assert!(find_type(&cst, SegmentType::OverClause).is_some());
+    }
+
+    #[test]
+    fn test_within_group_ansi() {
+        let sql = "SELECT LISTAGG(name, ',') WITHIN GROUP (ORDER BY sort) AS names FROM sites";
+        let cst = parse(sql);
+        assert_no_unparsable(&cst);
+        assert_eq!(cst.raw(), sql);
+        assert!(find_type(&cst, SegmentType::WithinGroupClause).is_some());
+    }
+
     // ── Error Recovery Tests ──────────────────────────────────────
 
     fn count_unparsable(seg: &Segment) -> usize {
