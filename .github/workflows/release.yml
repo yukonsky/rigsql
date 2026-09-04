@@ -107,8 +107,13 @@ jobs:
             checksums.txt
 
   # ── Publish to crates.io ──
+  # Gated on build + release: publishing to crates.io cannot be undone (only
+  # yanked), so it must not run until every reversible step has succeeded.
+  # `build` is listed even though `release` already depends on it -- the gate on
+  # the one irreversible job should not rely on another job's `needs`.
   publish:
     name: Publish to crates.io
+    needs: [build, release]
     runs-on: ubuntu-latest
     env:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
