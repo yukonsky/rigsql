@@ -1036,8 +1036,7 @@ pub trait Grammar: Send + Sync {
 
         // Options: WITH GRANT OPTION, AS <principal>, GRANTED BY <principal>, CASCADE
         loop {
-            if ctx.peek_keyword("WITH") {
-                // WITH GRANT OPTION / WITH ADMIN OPTION / WITH INHERIT TRUE
+            if peek_with_grant_option(ctx) {
                 push_keywords(ctx, &mut children, 3);
             } else if ctx.peek_keyword("AS") || ctx.peek_keywords(&["GRANTED", "BY"]) {
                 let n = if ctx.peek_keyword("AS") { 1 } else { 2 };
@@ -2146,6 +2145,17 @@ fn push_keywords(ctx: &mut ParseContext, children: &mut Vec<Segment>, n: usize) 
             children.push(token_segment(kw, SegmentType::Keyword));
         }
     }
+}
+
+/// Whether a DCL option follows: `WITH GRANT OPTION`, or PostgreSQL's
+/// `WITH {ADMIN | INHERIT | SET} {OPTION | TRUE | FALSE}`.  Checking all three
+/// words keeps a following `WITH cte AS (...)` out of the statement.
+fn peek_with_grant_option(ctx: &ParseContext) -> bool {
+    ["GRANT", "ADMIN", "INHERIT", "SET"].iter().any(|opt| {
+        ["OPTION", "TRUE", "FALSE"]
+            .iter()
+            .any(|val| ctx.peek_keywords(&["WITH", opt, val]))
+    })
 }
 
 /// Whether the current word is a securable class prefix after GRANT ... ON:

@@ -881,6 +881,21 @@ mod tests {
     }
 
     #[test]
+    fn test_grant_without_semicolon_does_not_swallow_next_cte() {
+        let cst =
+            parse_tsql("GRANT SELECT ON dbo.t TO u\nWITH cte AS (SELECT 1 AS x) SELECT x FROM cte");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::GrantStatement).is_some());
+        assert!(find_type(&cst, SegmentType::WithClause).is_some());
+    }
+
+    #[test]
+    fn test_pg_grant_role_with_inherit_false() {
+        let sql = "GRANT admin TO bob WITH INHERIT FALSE";
+        assert_single_grant(&parse_pg(sql), sql);
+    }
+
+    #[test]
     fn test_incomplete_grant_does_not_swallow_next_statement() {
         let cst = parse_tsql("GRANT CONNECT\nSELECT a FROM t");
         assert!(find_type(&cst, SegmentType::GrantStatement).is_some());
