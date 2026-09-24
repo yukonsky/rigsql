@@ -47,6 +47,8 @@ pub trait Grammar: Send + Sync {
             self.parse_drop_statement(ctx)
         } else if ctx.peek_keyword("ALTER") {
             self.parse_alter_statement(ctx)
+        } else if ctx.peek_keyword("GRANT") || ctx.peek_keyword("REVOKE") {
+            self.parse_grant_statement(ctx)
         } else if ctx.peek_keyword("USE")
             || ctx.peek_keyword("TRUNCATE")
             || ctx.peek_keyword("OPEN")
@@ -966,6 +968,127 @@ pub trait Grammar: Send + Sync {
             SegmentType::AlterTableStatement,
             children,
         )))
+    }
+
+    // ── GRANT / REVOKE / DENY ────────────────────────────────────
+
+    /// Parse a DCL statement:
+    /// `{GRANT | REVOKE | DENY} [GRANT OPTION FOR] <permissions>
+    ///  [ON [<class>::] <securable>] {TO | FROM} <principals> [<options>]`.
+    fn parse_grant_statement(&self, ctx: &mut ParseContext) -> Option<Segment> {
+        let mut children = Vec::new();
+        let kw = ctx.advance()?;
+        children.push(token_segment(kw, SegmentType::Keyword));
+
+        if ctx.peek_keywords(&["GRANT", "OPTION", "FOR"]) {
+            push_keywords(ctx, &mut children, 3);
+        }
+
+        // Permissions: comma-separated, each `word+ [(col, ...)]`
+        loop {
+            children.extend(eat_trivia_segments(ctx));
+            self.parse_grant_permission(ctx, &mut children);
+            let save = ctx.save();
+            let trivia = eat_trivia_segments(ctx);
+            match ctx.eat_kind(TokenKind::Comma) {
+                Some(comma) => {
+                    children.extend(trivia);
+                    children.push(token_segment(comma, SegmentType::Comma));
+                }
+                None => {
+                    ctx.restore(save);
+                    break;
+                }
+            }
+        }
+
+        // ON [<class>::] <securable>
+        if ctx.peek_keyword("ON") {
+            push_keywords(ctx, &mut children, 1);
+            children.extend(eat_trivia_segments(ctx));
+            while !ctx.at_eof()
+                && ctx.peek_kind() != Some(TokenKind::Semicolon)
+                && !ctx.peek_keyword("TO")
+                && !ctx.peek_keyword("FROM")
+                && !self.peek_statement_start(ctx)
+            {
+                if peek_securable_class(ctx) {
+                    // T-SQL `OBJECT::` or PostgreSQL `TABLE` / `SCHEMA` ...
+                    push_keywords(ctx, &mut children, 1);
+                } else if let Some(name) = self.parse_qualified_name(ctx) {
+                    children.push(name);
+                } else if ctx.peek_kind() == Some(TokenKind::LParen) {
+                    children.extend(self.parse_paren_block(ctx));
+                } else {
+                    let token = ctx.advance().unwrap();
+                    children.push(any_token_segment(token));
+                }
+                children.extend(eat_trivia_segments(ctx));
+            }
+        }
+
+        // {TO | FROM} <principals>
+        if ctx.peek_keyword("TO") || ctx.peek_keyword("FROM") {
+            push_keywords(ctx, &mut children, 1);
+            children.extend(eat_trivia_segments(ctx));
+            parse_comma_separated(ctx, &mut children, |c| self.parse_identifier(c));
+        }
+
+        // Options: WITH GRANT OPTION, AS <principal>, GRANTED BY <principal>, CASCADE
+        loop {
+            if ctx.peek_keyword("WITH") {
+                // WITH GRANT OPTION / WITH ADMIN OPTION / WITH INHERIT TRUE
+                push_keywords(ctx, &mut children, 3);
+            } else if ctx.peek_keyword("AS") || ctx.peek_keywords(&["GRANTED", "BY"]) {
+                let n = if ctx.peek_keyword("AS") { 1 } else { 2 };
+                push_keywords(ctx, &mut children, n);
+                children.extend(eat_trivia_segments(ctx));
+                children.extend(self.parse_identifier(ctx));
+            } else if ctx.peek_keyword("CASCADE") || ctx.peek_keyword("RESTRICT") {
+                push_keywords(ctx, &mut children, 1);
+            } else {
+                break;
+            }
+        }
+
+        Some(Segment::Node(NodeSegment::new(
+            SegmentType::GrantStatement,
+            children,
+        )))
+    }
+
+    /// Parse one permission: `word+ [(col, ...)]`, e.g. `SELECT (a, b)`,
+    /// `ALTER ANY LOGIN`.  Only the first word may be a statement keyword
+    /// (SELECT, INSERT, ...), so a missing ON / TO still ends the statement.
+    fn parse_grant_permission(&self, ctx: &mut ParseContext, children: &mut Vec<Segment>) {
+        let Some(first) = ctx.eat_kind(TokenKind::Word) else {
+            return;
+        };
+        children.push(token_segment(first, SegmentType::Keyword));
+        loop {
+            let save = ctx.save();
+            let trivia = eat_trivia_segments(ctx);
+            if let Some(lp) = ctx.eat_kind(TokenKind::LParen) {
+                children.extend(trivia);
+                children.push(token_segment(lp, SegmentType::LParen));
+                children.extend(eat_trivia_segments(ctx));
+                parse_comma_separated(ctx, children, |c| self.parse_identifier(c));
+                children.extend(eat_trivia_segments(ctx));
+                if let Some(rp) = ctx.eat_kind(TokenKind::RParen) {
+                    children.push(token_segment(rp, SegmentType::RParen));
+                }
+            } else if ctx.peek_kind() == Some(TokenKind::Word)
+                && !["ON", "TO", "FROM"].iter().any(|kw| ctx.peek_keyword(kw))
+                && !self.peek_statement_start(ctx)
+            {
+                children.extend(trivia);
+                let word = ctx.advance().unwrap();
+                children.push(token_segment(word, SegmentType::Keyword));
+            } else {
+                ctx.restore(save);
+                break;
+            }
+        }
     }
 
     // ── Expression parsing ───────────────────────────────────────
@@ -2013,6 +2136,32 @@ pub fn any_token_segment(token: &Token) -> Segment {
         _ => SegmentType::Operator,
     };
     token_segment(token, st)
+}
+
+/// Consume `n` keywords (each with its leading trivia) already confirmed by a peek.
+fn push_keywords(ctx: &mut ParseContext, children: &mut Vec<Segment>, n: usize) {
+    for _ in 0..n {
+        children.extend(eat_trivia_segments(ctx));
+        if let Some(kw) = ctx.advance() {
+            children.push(token_segment(kw, SegmentType::Keyword));
+        }
+    }
+}
+
+/// Whether the current word is a securable class prefix after GRANT ... ON:
+/// `OBJECT::name` (T-SQL) or `TABLE name` (PostgreSQL).
+fn peek_securable_class(ctx: &ParseContext) -> bool {
+    let mut rest = ctx.remaining().iter();
+    if rest.next().map(|t| t.kind) != Some(TokenKind::Word) {
+        return false;
+    }
+    match rest.find(|t| !t.kind.is_trivia()) {
+        Some(t) if matches!(t.kind, TokenKind::ColonColon | TokenKind::QuotedIdentifier) => true,
+        Some(t) if t.kind == TokenKind::Word => {
+            !t.text.eq_ignore_ascii_case("TO") && !t.text.eq_ignore_ascii_case("FROM")
+        }
+        _ => false,
+    }
 }
 
 pub fn unparsable_token(token: &Token) -> Segment {

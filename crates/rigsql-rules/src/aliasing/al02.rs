@@ -87,6 +87,14 @@ mod tests {
     }
 
     #[test]
+    fn test_al02_accepts_grant() {
+        // `ON` in GRANT is syntax, not an implicit alias of `SELECT`.
+        let sql = "GRANT SELECT ON OBJECT::dbo.ExampleTable TO [example_user];";
+        let violations = lint_sql_with_dialect(sql, RuleAL02, "tsql");
+        assert_eq!(violations.len(), 0);
+    }
+
+    #[test]
     fn test_al02_skips_non_select() {
         let violations = lint_sql("SELECT * FROM t1 t2", RuleAL02);
         assert_eq!(violations.len(), 0);
