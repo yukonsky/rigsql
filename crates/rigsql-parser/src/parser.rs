@@ -826,4 +826,87 @@ mod tests {
         );
         assert_no_unparsable(&cst);
     }
+
+    // ── GRANT / REVOKE / DENY ────────────────────────────────────
+
+    fn assert_single_grant(cst: &Segment, sql: &str) {
+        assert_eq!(cst.raw(), sql);
+        assert_no_unparsable(cst);
+        assert!(find_type(cst, SegmentType::GrantStatement).is_some());
+        assert!(find_type(cst, SegmentType::SelectStatement).is_none());
+        let stmts = cst
+            .children()
+            .iter()
+            .filter(|s| s.segment_type() == SegmentType::Statement)
+            .count();
+        assert_eq!(stmts, 1, "expected a single statement");
+    }
+
+    #[test]
+    fn test_tsql_grant_on_object() {
+        let sql = "GRANT SELECT ON OBJECT::dbo.ExampleTable TO [example_user];";
+        assert_single_grant(&parse_tsql(sql), sql);
+    }
+
+    #[test]
+    fn test_tsql_grant_multiple_permissions() {
+        let sql = "GRANT INSERT, SELECT, UPDATE, EXECUTE ON SCHEMA::Sales TO app_user, [reporting] WITH GRANT OPTION AS dbo;";
+        assert_single_grant(&parse_tsql(sql), sql);
+    }
+
+    #[test]
+    fn test_tsql_grant_column_list() {
+        let sql = "GRANT SELECT (id, [name]) ON dbo.users TO app_user";
+        assert_single_grant(&parse_tsql(sql), sql);
+    }
+
+    #[test]
+    fn test_tsql_deny_and_revoke() {
+        let sql = "DENY DELETE ON OBJECT::dbo.t TO app_user;";
+        assert_single_grant(&parse_tsql(sql), sql);
+        let sql = "REVOKE GRANT OPTION FOR SELECT ON dbo.t FROM app_user CASCADE;";
+        assert_single_grant(&parse_tsql(sql), sql);
+    }
+
+    #[test]
+    fn test_pg_grant_on_all_tables() {
+        let sql = "GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA public TO reader";
+        assert_single_grant(&parse_pg(sql), sql);
+    }
+
+    #[test]
+    fn test_pg_grant_role_with_admin_option() {
+        let sql = "GRANT admin TO bob WITH ADMIN OPTION GRANTED BY alice";
+        assert_single_grant(&parse_pg(sql), sql);
+    }
+
+    #[test]
+    fn test_grant_without_semicolon_does_not_swallow_next_cte() {
+        let cst =
+            parse_tsql("GRANT SELECT ON dbo.t TO u\nWITH cte AS (SELECT 1 AS x) SELECT x FROM cte");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::GrantStatement).is_some());
+        assert!(find_type(&cst, SegmentType::WithClause).is_some());
+    }
+
+    #[test]
+    fn test_pg_grant_role_with_inherit_false() {
+        let sql = "GRANT admin TO bob WITH INHERIT FALSE";
+        assert_single_grant(&parse_pg(sql), sql);
+    }
+
+    #[test]
+    fn test_incomplete_grant_does_not_swallow_next_statement() {
+        let cst = parse_tsql("GRANT CONNECT\nSELECT a FROM t");
+        assert!(find_type(&cst, SegmentType::GrantStatement).is_some());
+        assert!(find_type(&cst, SegmentType::SelectStatement).is_some());
+    }
+
+    #[test]
+    fn test_grant_without_semicolon_stops_at_next_statement() {
+        let cst = parse_tsql("GRANT SELECT ON dbo.t TO app_user\nSELECT 1");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::GrantStatement).is_some());
+        assert!(find_type(&cst, SegmentType::SelectStatement).is_some());
+    }
 }

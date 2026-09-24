@@ -17,7 +17,7 @@ pub enum LexerError {
 /// Dialect-specific lexer configuration.
 #[derive(Debug, Clone, Default)]
 pub struct LexerConfig {
-    /// Enable `::` as cast operator (PostgreSQL).
+    /// Enable `::` token (PostgreSQL cast, SQL Server scope qualifier).
     pub double_colon: bool,
     /// Enable `[identifier]` quoting (SQL Server).
     pub bracket_identifiers: bool,
@@ -44,6 +44,8 @@ impl LexerConfig {
 
     pub fn tsql() -> Self {
         Self {
+            // `::` scope qualifier, e.g. `GRANT ... ON OBJECT::name`
+            double_colon: true,
             bracket_identifiers: true,
             double_at: true,
             ..Self::default()
@@ -672,6 +674,14 @@ mod tests {
         let mut lexer = Lexer::new("col::int", LexerConfig::postgres());
         let tokens = lexer.tokenize().unwrap();
         assert_eq!(tokens[1].kind, TokenKind::ColonColon);
+    }
+
+    #[test]
+    fn test_tsql_double_colon_scope_qualifier() {
+        let mut lexer = Lexer::new("OBJECT::dbo.t", LexerConfig::tsql());
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens[1].kind, TokenKind::ColonColon);
+        assert_eq!(tokens[2].kind, TokenKind::Word);
     }
 
     #[test]

@@ -56,7 +56,14 @@ impl Rule for RuleAL01 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::lint_sql;
+    use crate::test_utils::{lint_sql, lint_sql_with_dialect};
+
+    #[test]
+    fn test_al01_accepts_grant() {
+        let sql = "GRANT SELECT ON OBJECT::dbo.ExampleTable TO [example_user];";
+        let violations = lint_sql_with_dialect(sql, RuleAL01, "tsql");
+        assert_eq!(violations.len(), 0);
+    }
 
     #[test]
     fn test_al01_flags_implicit_alias() {
