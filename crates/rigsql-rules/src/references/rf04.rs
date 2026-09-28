@@ -117,7 +117,15 @@ impl Rule for RuleRF04 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::lint_sql;
+    use crate::test_utils::{lint_sql, lint_sql_with_dialect};
+
+    #[test]
+    fn test_rf04_accepts_grant() {
+        // `ON` / `TO` in GRANT are syntax keywords, not identifiers.
+        let sql = "GRANT SELECT ON OBJECT::dbo.ExampleTable TO [example_user];";
+        let violations = lint_sql_with_dialect(sql, RuleRF04, "tsql");
+        assert_eq!(violations.len(), 0);
+    }
 
     #[test]
     fn test_rf04_flags_keyword_as_identifier() {

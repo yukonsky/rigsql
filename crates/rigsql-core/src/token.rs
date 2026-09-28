@@ -53,7 +53,7 @@ pub enum TokenKind {
     LtEq,
     GtEq,
     Concat,     // ||
-    ColonColon, // :: (PostgreSQL cast)
+    ColonColon, // :: (PostgreSQL cast, SQL Server scope qualifier)
     AtSign,     // @ (SQL Server variable prefix)
     Colon,      // : (named parameter)
     LBracket,   // [ (array subscript, PostgreSQL)

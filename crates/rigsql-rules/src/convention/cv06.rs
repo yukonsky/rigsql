@@ -93,6 +93,35 @@ mod tests {
         assert_eq!(violations.len(), 0);
     }
 
+    /// Auto-fix with all default rules must not insert `;` inside a GRANT.
+    fn fix_all_postgres(sql: &str) -> String {
+        let cst = crate::test_utils::parse_postgres(sql);
+        let violations = crate::rule::lint(&cst, sql, &crate::default_rules(), "postgres");
+        crate::rule::apply_fixes(sql, &violations)
+    }
+
+    #[test]
+    fn test_cv06_grant_quoted_role() {
+        let sql = "GRANT \"read-only\" TO app_user;\n";
+        assert_eq!(lint_sql_with_dialect(sql, RuleCV06, "postgres").len(), 0);
+        assert_eq!(fix_all_postgres(sql), sql);
+    }
+
+    #[test]
+    fn test_cv06_grant_to_group() {
+        let sql = "GRANT SELECT ON t TO GROUP reporting;\n";
+        assert_eq!(lint_sql_with_dialect(sql, RuleCV06, "postgres").len(), 0);
+        assert_eq!(fix_all_postgres(sql), sql);
+    }
+
+    #[test]
+    fn test_cv06_grant_unrecognised_tail_is_kept_in_statement() {
+        // Syntax the GRANT parser does not model must stay inside the statement
+        // rather than splitting it, so CV06 never inserts `;` mid-statement.
+        let sql = "GRANT SELECT ON t TO app_user UNKNOWN_OPTION x;";
+        assert_eq!(lint_sql_with_dialect(sql, RuleCV06, "postgres").len(), 0);
+    }
+
     #[test]
     fn test_cv06_skips_tsql() {
         let violations = lint_sql_with_dialect("SELECT 1", RuleCV06, "tsql");

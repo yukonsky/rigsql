@@ -17,6 +17,7 @@ pub struct TsqlGrammar;
 const TSQL_EXTRA_KEYWORDS: &[&str] = &[
     "BEGIN",
     "DECLARE",
+    "DENY",
     "EXEC",
     "EXECUTE",
     "GO",
@@ -68,6 +69,8 @@ impl Grammar for TsqlGrammar {
             self.parse_throw_statement(ctx)
         } else if ctx.peek_keyword("RAISERROR") {
             self.parse_raiserror_statement(ctx)
+        } else if ctx.peek_keyword("DENY") {
+            self.parse_grant_statement(ctx)
         } else if ctx.peek_keyword("GO") {
             self.parse_go_statement(ctx)
         } else {

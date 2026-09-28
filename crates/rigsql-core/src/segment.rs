@@ -110,6 +110,9 @@ pub enum SegmentType {
     AlterTableStatement,
     DropStatement,
 
+    // DCL Statements
+    GrantStatement,
+
     // PostgreSQL
     TypeCastExpression,
     OnConflictClause,
