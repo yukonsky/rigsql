@@ -370,7 +370,7 @@ impl TsqlGrammar {
 
         // SET OPTION ON/OFF (e.g., SET ANSI_NULLS ON, SET NOCOUNT ON)
         if ctx.peek_kind() == Some(TokenKind::Word) {
-            self.consume_until_statement_end(ctx, &mut children);
+            self.consume_until_statement_end(ctx, &mut children, false);
             return Some(Segment::Node(NodeSegment::new(
                 SegmentType::SetVariableStatement,
                 children,
