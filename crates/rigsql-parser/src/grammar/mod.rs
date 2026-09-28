@@ -984,23 +984,10 @@ pub trait Grammar: Send + Sync {
             push_keywords(ctx, &mut children, 3);
         }
 
-        // Permissions: comma-separated, each `word+ [(col, ...)]`
-        loop {
-            children.extend(eat_trivia_segments(ctx));
-            self.parse_grant_permission(ctx, &mut children);
-            let save = ctx.save();
-            let trivia = eat_trivia_segments(ctx);
-            match ctx.eat_kind(TokenKind::Comma) {
-                Some(comma) => {
-                    children.extend(trivia);
-                    children.push(token_segment(comma, SegmentType::Comma));
-                }
-                None => {
-                    ctx.restore(save);
-                    break;
-                }
-            }
-        }
+        // Permissions (or role names): each `word+ [(col, ...)]` or `"role"`
+        parse_grant_list(ctx, &mut children, |c, ch| {
+            self.parse_grant_permission(c, ch)
+        });
 
         // ON [<class>::] <securable>
         if ctx.peek_keyword("ON") {
@@ -1027,11 +1014,22 @@ pub trait Grammar: Send + Sync {
             }
         }
 
-        // {TO | FROM} <principals>
+        // {TO | FROM} [GROUP] <principal>, ...
         if ctx.peek_keyword("TO") || ctx.peek_keyword("FROM") {
             push_keywords(ctx, &mut children, 1);
-            children.extend(eat_trivia_segments(ctx));
-            parse_comma_separated(ctx, &mut children, |c| self.parse_identifier(c));
+            parse_grant_list(ctx, &mut children, |c, ch| {
+                // PostgreSQL: `TO GROUP role_name`
+                if c.peek_keyword("GROUP")
+                    && matches!(
+                        peek_second_token(c).map(|t| t.kind),
+                        Some(TokenKind::Word | TokenKind::QuotedIdentifier)
+                    )
+                {
+                    push_keywords(c, ch, 1);
+                    ch.extend(eat_trivia_segments(c));
+                }
+                ch.extend(self.parse_identifier(c));
+            });
         }
 
         // Options: WITH GRANT OPTION, AS <principal>, GRANTED BY <principal>, CASCADE
@@ -1050,6 +1048,10 @@ pub trait Grammar: Send + Sync {
             }
         }
 
+        // Keep syntax not modelled above inside this statement, so it is not
+        // split and CV06 never inserts `;` in the middle of it.
+        self.consume_until_statement_end(ctx, &mut children);
+
         Some(Segment::Node(NodeSegment::new(
             SegmentType::GrantStatement,
             children,
@@ -1057,9 +1059,14 @@ pub trait Grammar: Send + Sync {
     }
 
     /// Parse one permission: `word+ [(col, ...)]`, e.g. `SELECT (a, b)`,
-    /// `ALTER ANY LOGIN`.  Only the first word may be a statement keyword
-    /// (SELECT, INSERT, ...), so a missing ON / TO still ends the statement.
+    /// `ALTER ANY LOGIN`, or a quoted role name (`GRANT "read-only" TO u`).
+    /// Only the first word may be a statement keyword (SELECT, INSERT, ...),
+    /// so a missing ON / TO still ends the statement.
     fn parse_grant_permission(&self, ctx: &mut ParseContext, children: &mut Vec<Segment>) {
+        if let Some(role) = ctx.eat_kind(TokenKind::QuotedIdentifier) {
+            children.push(token_segment(role, SegmentType::QuotedIdentifier));
+            return;
+        }
         let Some(first) = ctx.eat_kind(TokenKind::Word) else {
             return;
         };
@@ -2161,16 +2168,46 @@ fn peek_with_grant_option(ctx: &ParseContext) -> bool {
 /// Whether the current word is a securable class prefix after GRANT ... ON:
 /// `OBJECT::name` (T-SQL) or `TABLE name` (PostgreSQL).
 fn peek_securable_class(ctx: &ParseContext) -> bool {
-    let mut rest = ctx.remaining().iter();
-    if rest.next().map(|t| t.kind) != Some(TokenKind::Word) {
+    if ctx.peek_kind() != Some(TokenKind::Word) {
         return false;
     }
-    match rest.find(|t| !t.kind.is_trivia()) {
+    match peek_second_token(ctx) {
         Some(t) if matches!(t.kind, TokenKind::ColonColon | TokenKind::QuotedIdentifier) => true,
         Some(t) if t.kind == TokenKind::Word => {
             !t.text.eq_ignore_ascii_case("TO") && !t.text.eq_ignore_ascii_case("FROM")
         }
         _ => false,
+    }
+}
+
+/// The non-trivia token after the current (non-trivia) one.
+fn peek_second_token<'a>(ctx: &ParseContext<'a>) -> Option<&'a Token> {
+    let rest = ctx.remaining().get(1..)?;
+    rest.iter().find(|t| !t.kind.is_trivia())
+}
+
+/// Parse a comma-separated GRANT list whose items may span several segments
+/// (e.g. `SELECT (a, b)`, `GROUP role`), unlike `parse_comma_separated`.
+fn parse_grant_list(
+    ctx: &mut ParseContext,
+    children: &mut Vec<Segment>,
+    mut parse_one: impl FnMut(&mut ParseContext, &mut Vec<Segment>),
+) {
+    loop {
+        children.extend(eat_trivia_segments(ctx));
+        parse_one(ctx, children);
+        let save = ctx.save();
+        let trivia = eat_trivia_segments(ctx);
+        match ctx.eat_kind(TokenKind::Comma) {
+            Some(comma) => {
+                children.extend(trivia);
+                children.push(token_segment(comma, SegmentType::Comma));
+            }
+            None => {
+                ctx.restore(save);
+                break;
+            }
+        }
     }
 }
 

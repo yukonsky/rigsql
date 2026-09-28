@@ -890,6 +890,33 @@ mod tests {
     }
 
     #[test]
+    fn test_pg_grant_quoted_role() {
+        let sql = "GRANT \"read-only\" TO app_user;";
+        assert_single_grant(&parse_pg(sql), sql);
+    }
+
+    #[test]
+    fn test_pg_grant_to_group() {
+        let sql = "GRANT SELECT ON t TO GROUP reporting, app_user;";
+        let cst = parse_pg(sql);
+        assert_single_grant(&cst, sql);
+        let mut idents = Vec::new();
+        cst.walk(&mut |s| {
+            if s.segment_type() == SegmentType::Identifier {
+                idents.push(s.raw());
+            }
+        });
+        assert!(idents.contains(&"reporting".to_string()), "{idents:?}");
+        assert!(!idents.contains(&"GROUP".to_string()), "{idents:?}");
+    }
+
+    #[test]
+    fn test_grant_unrecognised_tail_stays_in_statement() {
+        let sql = "GRANT SELECT ON t TO app_user UNKNOWN_OPTION x;";
+        assert_single_grant(&parse_pg(sql), sql);
+    }
+
+    #[test]
     fn test_pg_grant_role_with_inherit_false() {
         let sql = "GRANT admin TO bob WITH INHERIT FALSE";
         assert_single_grant(&parse_pg(sql), sql);
