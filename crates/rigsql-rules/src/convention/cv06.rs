@@ -140,6 +140,9 @@ mod tests {
             "USE update;\n",
             "CLOSE update;\n",
             "FETCH NEXT FROM update;\n",
+            "DEALLOCATE PREPARE update;\n",
+            "LOCK TABLE update IN ACCESS EXCLUSIVE MODE;\n",
+            "COMMENT ON TABLE update IS 'x';\n",
             "CREATE INDEX idx_a ON t (a);\n",
             // Unknown statements go through the parser's error recovery.
             "LOCK TABLE s.update IN ACCESS EXCLUSIVE MODE;\n",

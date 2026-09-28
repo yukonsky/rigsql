@@ -60,6 +60,7 @@ pub trait Grammar: Send + Sync {
             || ctx.peek_keyword("FETCH")
             || ctx.peek_keyword("BREAK")
             || ctx.peek_keyword("CONTINUE")
+            || ctx.peek_keyword("LOCK")
         {
             self.parse_simple_statement(ctx)
         } else {
@@ -2093,10 +2094,7 @@ pub trait Grammar: Send + Sync {
             if !token.kind.is_trivia() {
                 expect_name = match token.kind {
                     TokenKind::Dot | TokenKind::Comma | TokenKind::ColonColon => true,
-                    TokenKind::Word => {
-                        token.text.eq_ignore_ascii_case("FROM")
-                            || token.text.eq_ignore_ascii_case("IN")
-                    }
+                    TokenKind::Word => binary_search_keyword(NAME_PREFIX_KEYWORDS, &token.text),
                     _ => false,
                 };
             }
@@ -2234,6 +2232,11 @@ fn peek_with_grant_option(ctx: &ParseContext) -> bool {
             .any(|val| ctx.peek_keywords(&["WITH", opt, val]))
     })
 }
+
+/// Words always followed by a name (or another such modifier), never by a new
+/// statement: `FETCH ... FROM cur`, `LOCK TABLE ONLY t`, `DEALLOCATE PREPARE p`,
+/// `CLOSE GLOBAL c`.  Sorted.
+const NAME_PREFIX_KEYWORDS: &[&str] = &["FROM", "GLOBAL", "IN", "ONLY", "PREPARE", "TABLE"];
 
 /// Object-type words that may precede a securable name in PostgreSQL
 /// `GRANT ... ON <type> name` (e.g. `TABLE`, `ALL TABLES IN SCHEMA`).  Sorted.
@@ -2540,7 +2543,12 @@ mod tests {
     #[test]
     fn test_binary_searched_keyword_lists_are_sorted() {
         // `binary_search_keyword` silently misses words in an unsorted list.
-        for list in [CLAUSE_KEYWORDS, JOIN_KEYWORDS, SECURABLE_CLASS_KEYWORDS] {
+        for list in [
+            CLAUSE_KEYWORDS,
+            JOIN_KEYWORDS,
+            NAME_PREFIX_KEYWORDS,
+            SECURABLE_CLASS_KEYWORDS,
+        ] {
             assert!(list.windows(2).all(|w| w[0] < w[1]), "{list:?}");
         }
     }

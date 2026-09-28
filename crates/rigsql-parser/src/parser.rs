@@ -1000,6 +1000,12 @@ mod tests {
             "DEALLOCATE update;",
             "FETCH NEXT FROM update;",
             "FETCH NEXT IN update;",
+            // Optional modifiers before the name keep it a name.
+            "DEALLOCATE PREPARE update;",
+            "CLOSE GLOBAL update;",
+            "LOCK update;",
+            "LOCK TABLE update IN ACCESS EXCLUSIVE MODE;",
+            "LOCK TABLE ONLY s.update, update IN SHARE MODE;",
         ] {
             assert_single_statement(&parse_pg(sql), sql, SegmentType::SimpleStatement);
         }
@@ -1017,7 +1023,9 @@ mod tests {
     fn test_error_recovery_keeps_parens_and_dotted_names_together() {
         // Unknown statements go through error recovery; its boundary check
         // must not split `s.update` or stop at a SELECT inside parentheses.
-        let cst = parse_pg("LOCK TABLE s.update IN ACCESS EXCLUSIVE MODE;\nSELECT 1;");
+        let cst = parse_pg(
+            "COMMENT ON TABLE update IS 'x';\nANALYZE s.update (a, (SELECT 1));\nSELECT 1;",
+        );
         let unparsable: Vec<_> = cst
             .children()
             .iter()
@@ -1026,7 +1034,10 @@ mod tests {
             .collect();
         assert_eq!(
             unparsable,
-            ["LOCK TABLE s.update IN ACCESS EXCLUSIVE MODE;"]
+            [
+                "COMMENT ON TABLE update IS 'x';",
+                "ANALYZE s.update (a, (SELECT 1));"
+            ]
         );
         assert!(find_type(&cst, SegmentType::SelectStatement).is_some());
     }
