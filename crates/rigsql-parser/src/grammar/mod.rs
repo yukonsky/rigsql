@@ -993,21 +993,29 @@ pub trait Grammar: Send + Sync {
         if ctx.peek_keyword("ON") {
             push_keywords(ctx, &mut children, 1);
             children.extend(eat_trivia_segments(ctx));
+            // Right after ON, a class keyword, `::` or a comma, a name is
+            // expected, so a word like `update` there is an object name
+            // (non-reserved in PostgreSQL), not the start of a new statement.
+            let mut expect_name = true;
             while !ctx.at_eof()
                 && ctx.peek_kind() != Some(TokenKind::Semicolon)
                 && !ctx.peek_keyword("TO")
                 && !ctx.peek_keyword("FROM")
-                && !self.peek_statement_start(ctx)
+                && (expect_name || !self.peek_statement_start(ctx))
             {
                 if peek_securable_class(ctx) {
                     // T-SQL `OBJECT::` or PostgreSQL `TABLE` / `SCHEMA` ...
                     push_keywords(ctx, &mut children, 1);
+                    expect_name = true;
                 } else if let Some(name) = self.parse_qualified_name(ctx) {
                     children.push(name);
+                    expect_name = false;
                 } else if ctx.peek_kind() == Some(TokenKind::LParen) {
                     children.extend(self.parse_paren_block(ctx));
+                    expect_name = false;
                 } else {
                     let token = ctx.advance().unwrap();
+                    expect_name = matches!(token.kind, TokenKind::Comma | TokenKind::ColonColon);
                     children.push(any_token_segment(token));
                 }
                 children.extend(eat_trivia_segments(ctx));
@@ -2165,16 +2173,49 @@ fn peek_with_grant_option(ctx: &ParseContext) -> bool {
     })
 }
 
+/// Object-type words that may precede a securable name in PostgreSQL
+/// `GRANT ... ON <type> name` (e.g. `TABLE`, `ALL TABLES IN SCHEMA`).  Sorted.
+const SECURABLE_CLASS_KEYWORDS: &[&str] = &[
+    "ALL",
+    "DATA",
+    "DATABASE",
+    "DOMAIN",
+    "FOREIGN",
+    "FUNCTION",
+    "FUNCTIONS",
+    "IN",
+    "LANGUAGE",
+    "LARGE",
+    "OBJECT",
+    "PARAMETER",
+    "PROCEDURE",
+    "PROCEDURES",
+    "ROUTINE",
+    "ROUTINES",
+    "SCHEMA",
+    "SEQUENCE",
+    "SEQUENCES",
+    "SERVER",
+    "TABLE",
+    "TABLES",
+    "TABLESPACE",
+    "TYPE",
+    "WRAPPER",
+];
+
 /// Whether the current word is a securable class prefix after GRANT ... ON:
 /// `OBJECT::name` (T-SQL) or `TABLE name` (PostgreSQL).
 fn peek_securable_class(ctx: &ParseContext) -> bool {
-    if ctx.peek_kind() != Some(TokenKind::Word) {
+    let Some(word) = ctx.peek().filter(|t| t.kind == TokenKind::Word) else {
         return false;
-    }
+    };
     match peek_second_token(ctx) {
-        Some(t) if matches!(t.kind, TokenKind::ColonColon | TokenKind::QuotedIdentifier) => true,
-        Some(t) if t.kind == TokenKind::Word => {
-            !t.text.eq_ignore_ascii_case("TO") && !t.text.eq_ignore_ascii_case("FROM")
+        Some(t) if t.kind == TokenKind::ColonColon => true,
+        // A known type word followed by a name; `ON type TO u` names a table.
+        Some(t) if matches!(t.kind, TokenKind::Word | TokenKind::QuotedIdentifier) => {
+            binary_search_keyword(SECURABLE_CLASS_KEYWORDS, &word.text)
+                && !t.text.eq_ignore_ascii_case("TO")
+                && !t.text.eq_ignore_ascii_case("FROM")
         }
         _ => false,
     }
@@ -2426,4 +2467,17 @@ const JOIN_KEYWORDS: &[&str] = &["CROSS", "FULL", "INNER", "JOIN", "LEFT", "RIGH
 
 pub fn is_join_keyword(word: &str) -> bool {
     binary_search_keyword(JOIN_KEYWORDS, word) || word.eq_ignore_ascii_case("CROSS")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_binary_searched_keyword_lists_are_sorted() {
+        // `binary_search_keyword` silently misses words in an unsorted list.
+        for list in [CLAUSE_KEYWORDS, JOIN_KEYWORDS, SECURABLE_CLASS_KEYWORDS] {
+            assert!(list.windows(2).all(|w| w[0] < w[1]), "{list:?}");
+        }
+    }
 }
