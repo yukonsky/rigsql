@@ -104,14 +104,21 @@ pub enum SegmentType {
     InsertStatement,
     UpdateStatement,
     DeleteStatement,
+    MergeStatement,
+    TruncateStatement,
 
     // DDL Statements
+    /// CREATE other than CREATE TABLE (INDEX, VIEW, ...), not parsed further.
+    CreateStatement,
     CreateTableStatement,
     AlterTableStatement,
     DropStatement,
 
     // DCL Statements
     GrantStatement,
+
+    /// USE / OPEN / CLOSE / FETCH / ... consumed to the statement end.
+    SimpleStatement,
 
     // PostgreSQL
     TypeCastExpression,
