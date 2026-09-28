@@ -115,6 +115,23 @@ mod tests {
     }
 
     #[test]
+    fn test_cv06_grant_on_keyword_object_name() {
+        for sql in [
+            "GRANT SELECT ON update TO app_user;\n",
+            "GRANT SELECT ON TABLE update TO app_user;\n",
+            "GRANT USAGE ON SCHEMA update TO app_user;\n",
+            "REVOKE SELECT ON update FROM app_user;\n",
+        ] {
+            assert_eq!(
+                lint_sql_with_dialect(sql, RuleCV06, "postgres").len(),
+                0,
+                "{sql}"
+            );
+            assert_eq!(fix_all_postgres(sql), sql);
+        }
+    }
+
+    #[test]
     fn test_cv06_grant_unrecognised_tail_is_kept_in_statement() {
         // Syntax the GRANT parser does not model must stay inside the statement
         // rather than splitting it, so CV06 never inserts `;` mid-statement.

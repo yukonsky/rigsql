@@ -911,6 +911,29 @@ mod tests {
     }
 
     #[test]
+    fn test_pg_grant_on_keyword_object_name() {
+        // UPDATE is non-reserved in PostgreSQL, so it can name a table / schema.
+        for sql in [
+            "GRANT SELECT ON update TO app_user;",
+            "GRANT SELECT ON TABLE update TO app_user;",
+            "GRANT USAGE ON SCHEMA update TO app_user;",
+            "REVOKE SELECT ON update FROM app_user;",
+            "GRANT SELECT ON t, update TO app_user;",
+            // A class word used as the object name itself.
+            "GRANT SELECT ON type TO app_user;",
+        ] {
+            assert_single_grant(&parse_pg(sql), sql);
+        }
+    }
+
+    #[test]
+    fn test_grant_on_without_to_stops_at_next_statement() {
+        let cst = parse_pg("GRANT SELECT ON t\nUPDATE t SET a = 1");
+        assert!(find_type(&cst, SegmentType::GrantStatement).is_some());
+        assert!(find_type(&cst, SegmentType::UpdateStatement).is_some());
+    }
+
+    #[test]
     fn test_grant_unrecognised_tail_stays_in_statement() {
         let sql = "GRANT SELECT ON t TO app_user UNKNOWN_OPTION x;";
         assert_single_grant(&parse_pg(sql), sql);
