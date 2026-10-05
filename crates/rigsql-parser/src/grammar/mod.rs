@@ -2016,6 +2016,13 @@ pub trait Grammar: Send + Sync {
         children.extend(eat_trivia_segments(ctx));
         parse_comma_separated(ctx, &mut children, |c| self.parse_qualified_name(c));
 
+        // CONTINUE is also a statement keyword; consume only the full option.
+        if ctx.peek_keywords(&["CONTINUE", "IDENTITY"])
+            || ctx.peek_keywords(&["RESTART", "IDENTITY"])
+        {
+            push_keywords(ctx, &mut children, 2);
+        }
+
         // T-SQL `WITH (PARTITIONS (...))` — WITH would otherwise start a CTE.
         if ctx.peek_keyword("WITH")
             && peek_second_token(ctx).is_some_and(|t| t.kind == TokenKind::LParen)

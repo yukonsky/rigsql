@@ -958,6 +958,19 @@ mod tests {
     }
 
     #[test]
+    fn test_truncate_identity_options() {
+        for sql in [
+            "TRUNCATE t CONTINUE IDENTITY;",
+            "TRUNCATE t CONTINUE /* keep */ IDENTITY CASCADE;",
+            "TRUNCATE t RESTART IDENTITY RESTRICT;",
+        ] {
+            assert_single_statement(&parse_pg(sql), sql, SegmentType::TruncateStatement);
+        }
+        let cst = parse_tsql("TRUNCATE t\nCONTINUE;");
+        assert!(find_type(&cst, SegmentType::SimpleStatement).is_some());
+    }
+
+    #[test]
     fn test_tsql_truncate_with_partitions() {
         let sql = "TRUNCATE TABLE dbo.t WITH (PARTITIONS (2, 4 TO 6));";
         assert_single_statement(&parse_tsql(sql), sql, SegmentType::TruncateStatement);
