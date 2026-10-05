@@ -135,6 +135,8 @@ mod tests {
     fn test_cv06_truncate_merge_and_simple_statements() {
         for sql in [
             "TRUNCATE t CONTINUE IDENTITY;\n",
+            "TRUNCATE a, ONLY update;\n",
+            "TRUNCATE TABLE ONLY a, ONLY s.update CONTINUE IDENTITY;\n",
             "TRUNCATE update;\n",
             "TRUNCATE s.update;\n",
             "USE mydb;\n",

@@ -951,6 +951,8 @@ mod tests {
             "TRUNCATE TABLE update;",
             "TRUNCATE s.update;",
             "TRUNCATE a, update;",
+            "TRUNCATE a, ONLY update;",
+            "TRUNCATE TABLE ONLY a, ONLY s.update CONTINUE IDENTITY;",
             "TRUNCATE TABLE ONLY s.orders, items RESTART IDENTITY CASCADE;",
         ] {
             assert_single_statement(&parse_pg(sql), sql, SegmentType::TruncateStatement);

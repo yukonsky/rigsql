@@ -2008,13 +2008,22 @@ pub trait Grammar: Send + Sync {
         let mut children = Vec::new();
         let kw = ctx.eat_keyword("TRUNCATE")?;
         children.push(token_segment(kw, SegmentType::Keyword));
-        for opt in ["TABLE", "ONLY"] {
-            if ctx.peek_keyword(opt) {
-                push_keywords(ctx, &mut children, 1);
-            }
+        if ctx.peek_keyword("TABLE") {
+            push_keywords(ctx, &mut children, 1);
         }
         children.extend(eat_trivia_segments(ctx));
-        parse_comma_separated(ctx, &mut children, |c| self.parse_qualified_name(c));
+        parse_comma_separated(ctx, &mut children, |c| {
+            let mut table = Vec::new();
+            if c.peek_keyword("ONLY") {
+                push_keywords(c, &mut table, 1);
+                table.extend(eat_trivia_segments(c));
+            }
+            table.push(self.parse_qualified_name(c)?);
+            Some(Segment::Node(NodeSegment::new(
+                SegmentType::TableRef,
+                table,
+            )))
+        });
 
         // CONTINUE is also a statement keyword; consume only the full option.
         if ctx.peek_keywords(&["CONTINUE", "IDENTITY"])
