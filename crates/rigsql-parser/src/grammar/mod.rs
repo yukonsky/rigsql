@@ -49,15 +49,18 @@ pub trait Grammar: Send + Sync {
             self.parse_alter_statement(ctx)
         } else if ctx.peek_keyword("GRANT") || ctx.peek_keyword("REVOKE") {
             self.parse_grant_statement(ctx)
+        } else if ctx.peek_keyword("TRUNCATE") {
+            self.parse_truncate_statement(ctx)
+        } else if ctx.peek_keyword("MERGE") {
+            self.parse_merge_statement(ctx)
         } else if ctx.peek_keyword("USE")
-            || ctx.peek_keyword("TRUNCATE")
             || ctx.peek_keyword("OPEN")
             || ctx.peek_keyword("CLOSE")
             || ctx.peek_keyword("DEALLOCATE")
             || ctx.peek_keyword("FETCH")
             || ctx.peek_keyword("BREAK")
             || ctx.peek_keyword("CONTINUE")
-            || ctx.peek_keyword("MERGE")
+            || ctx.peek_keyword("LOCK")
         {
             self.parse_simple_statement(ctx)
         } else {
@@ -93,22 +96,12 @@ pub trait Grammar: Send + Sync {
                 if let Some(token) = ctx.advance() {
                     unparsable_children.push(any_token_segment(token));
                 }
-                while !ctx.at_eof() {
-                    // Stop before a semicolon — consume it as part of the
-                    // unparsable node so the next iteration starts cleanly.
-                    if ctx.peek_kind() == Some(TokenKind::Semicolon) {
-                        if let Some(semi) = ctx.advance() {
-                            unparsable_children.push(token_segment(semi, SegmentType::Semicolon));
-                        }
-                        break;
-                    }
-                    // Stop before a token that looks like it starts a new statement.
-                    if self.peek_statement_start(ctx) {
-                        break;
-                    }
-                    if let Some(token) = ctx.advance() {
-                        unparsable_children.push(any_token_segment(token));
-                    }
+                // Same boundary rules as simple statements (parens, `s.update`).
+                self.consume_until_statement_end(ctx, &mut unparsable_children, false);
+                // Consume the semicolon as part of the unparsable node so the
+                // next iteration starts cleanly.
+                if let Some(semi) = ctx.eat_kind(TokenKind::Semicolon) {
+                    unparsable_children.push(token_segment(semi, SegmentType::Semicolon));
                 }
                 if !unparsable_children.is_empty() {
                     children.push(Segment::Node(NodeSegment::new(
@@ -135,6 +128,9 @@ pub trait Grammar: Send + Sync {
 
         match inner {
             Some(stmt_seg) => {
+                // A nested Statement has no `;` of its own, so CV06 would
+                // flag it and auto-fix would insert `;` on every pass.
+                debug_assert_ne!(stmt_seg.segment_type(), SegmentType::Statement);
                 children.push(stmt_seg);
                 // Optional trailing semicolon
                 children.extend(eat_trivia_segments(ctx));
@@ -895,7 +891,7 @@ pub trait Grammar: Send + Sync {
         // For other CREATE statements, consume until semicolon or EOF
         self.consume_until_end(ctx, &mut children);
         Some(Segment::Node(NodeSegment::new(
-            SegmentType::Statement,
+            SegmentType::CreateStatement,
             children,
         )))
     }
@@ -993,21 +989,29 @@ pub trait Grammar: Send + Sync {
         if ctx.peek_keyword("ON") {
             push_keywords(ctx, &mut children, 1);
             children.extend(eat_trivia_segments(ctx));
+            // Right after ON, a class keyword, `::` or a comma, a name is
+            // expected, so a word like `update` there is an object name
+            // (non-reserved in PostgreSQL), not the start of a new statement.
+            let mut expect_name = true;
             while !ctx.at_eof()
                 && ctx.peek_kind() != Some(TokenKind::Semicolon)
                 && !ctx.peek_keyword("TO")
                 && !ctx.peek_keyword("FROM")
-                && !self.peek_statement_start(ctx)
+                && (expect_name || !self.peek_statement_start(ctx))
             {
                 if peek_securable_class(ctx) {
                     // T-SQL `OBJECT::` or PostgreSQL `TABLE` / `SCHEMA` ...
                     push_keywords(ctx, &mut children, 1);
+                    expect_name = true;
                 } else if let Some(name) = self.parse_qualified_name(ctx) {
                     children.push(name);
+                    expect_name = false;
                 } else if ctx.peek_kind() == Some(TokenKind::LParen) {
                     children.extend(self.parse_paren_block(ctx));
+                    expect_name = false;
                 } else {
                     let token = ctx.advance().unwrap();
+                    expect_name = matches!(token.kind, TokenKind::Comma | TokenKind::ColonColon);
                     children.push(any_token_segment(token));
                 }
                 children.extend(eat_trivia_segments(ctx));
@@ -1050,7 +1054,7 @@ pub trait Grammar: Send + Sync {
 
         // Keep syntax not modelled above inside this statement, so it is not
         // split and CV06 never inserts `;` in the middle of it.
-        self.consume_until_statement_end(ctx, &mut children);
+        self.consume_until_statement_end(ctx, &mut children, false);
 
         Some(Segment::Node(NodeSegment::new(
             SegmentType::GrantStatement,
@@ -1980,15 +1984,79 @@ pub trait Grammar: Send + Sync {
 
     // ── Simple statement ─────────────────────────────────────────
 
-    /// Parse a simple statement (USE, TRUNCATE, etc.) by consuming until end.
+    /// Parse a simple statement (USE, FETCH, etc.) by consuming until end.
     fn parse_simple_statement(&self, ctx: &mut ParseContext) -> Option<Segment> {
         let mut children = Vec::new();
         let kw = ctx.advance()?;
+        // `USE update` / `CLOSE update`: the operand is a name, even when it
+        // matches a statement keyword.  BREAK / CONTINUE take no operand.
+        let has_operand =
+            !kw.text.eq_ignore_ascii_case("BREAK") && !kw.text.eq_ignore_ascii_case("CONTINUE");
         children.push(token_segment(kw, SegmentType::Keyword));
         children.extend(eat_trivia_segments(ctx));
-        self.consume_until_statement_end(ctx, &mut children);
+        self.consume_until_statement_end(ctx, &mut children, has_operand);
         Some(Segment::Node(NodeSegment::new(
-            SegmentType::Statement,
+            SegmentType::SimpleStatement,
+            children,
+        )))
+    }
+
+    /// `TRUNCATE [TABLE] [ONLY] name [, ...] [options]`.  Table names are
+    /// parsed explicitly: a name like `update` (non-reserved in PostgreSQL)
+    /// would otherwise look like the start of a new statement.
+    fn parse_truncate_statement(&self, ctx: &mut ParseContext) -> Option<Segment> {
+        let mut children = Vec::new();
+        let kw = ctx.eat_keyword("TRUNCATE")?;
+        children.push(token_segment(kw, SegmentType::Keyword));
+        if ctx.peek_keyword("TABLE") {
+            push_keywords(ctx, &mut children, 1);
+        }
+        children.extend(eat_trivia_segments(ctx));
+        parse_comma_separated(ctx, &mut children, |c| {
+            let mut table = Vec::new();
+            if c.peek_keyword("ONLY") {
+                push_keywords(c, &mut table, 1);
+                table.extend(eat_trivia_segments(c));
+            }
+            table.push(self.parse_qualified_name(c)?);
+            Some(Segment::Node(NodeSegment::new(
+                SegmentType::TableRef,
+                table,
+            )))
+        });
+
+        // CONTINUE is also a statement keyword; consume only the full option.
+        if ctx.peek_keywords(&["CONTINUE", "IDENTITY"])
+            || ctx.peek_keywords(&["RESTART", "IDENTITY"])
+        {
+            push_keywords(ctx, &mut children, 2);
+        }
+
+        // T-SQL `WITH (PARTITIONS (...))` — WITH would otherwise start a CTE.
+        if ctx.peek_keyword("WITH")
+            && peek_second_token(ctx).is_some_and(|t| t.kind == TokenKind::LParen)
+        {
+            push_keywords(ctx, &mut children, 1);
+            children.extend(eat_trivia_segments(ctx));
+            children.extend(self.parse_paren_block(ctx));
+        }
+        self.consume_until_statement_end(ctx, &mut children, false);
+        Some(Segment::Node(NodeSegment::new(
+            SegmentType::TruncateStatement,
+            children,
+        )))
+    }
+
+    /// `MERGE` — its WHEN clauses contain UPDATE / INSERT / DELETE, so consume
+    /// to `;` / EOF (like DROP / ALTER) rather than stopping at those keywords.
+    fn parse_merge_statement(&self, ctx: &mut ParseContext) -> Option<Segment> {
+        let mut children = Vec::new();
+        let kw = ctx.eat_keyword("MERGE")?;
+        children.push(token_segment(kw, SegmentType::Keyword));
+        children.extend(eat_trivia_segments(ctx));
+        self.consume_until_end(ctx, &mut children);
+        Some(Segment::Node(NodeSegment::new(
+            SegmentType::MergeStatement,
             children,
         )))
     }
@@ -2008,33 +2076,49 @@ pub trait Grammar: Send + Sync {
         false
     }
 
-    /// Consume tokens until semicolon, EOF, or start of new statement.
     /// Consume tokens until semicolon, EOF, or start of a new statement.
     /// Tracks paren depth so that keywords inside subqueries (e.g. `SELECT`
     /// within `(SELECT ...)`) do not cause premature termination.
-    fn consume_until_statement_end(&self, ctx: &mut ParseContext, children: &mut Vec<Segment>) {
+    ///
+    /// Where a name is expected, a word is never a statement start: at the
+    /// beginning when `expect_name` is set, and after `.`, `,`, `::`, FROM or
+    /// IN (`s.update`, `a, update`, `FETCH NEXT FROM update`).
+    fn consume_until_statement_end(
+        &self,
+        ctx: &mut ParseContext,
+        children: &mut Vec<Segment>,
+        mut expect_name: bool,
+    ) {
         let mut paren_depth = 0u32;
         while !ctx.at_eof() {
             match ctx.peek_kind() {
-                Some(TokenKind::Semicolon) if paren_depth == 0 => break,
-                Some(TokenKind::LParen) => {
-                    paren_depth += 1;
-                    let token = ctx.advance().unwrap();
-                    children.push(any_token_segment(token));
-                }
-                Some(TokenKind::RParen) => {
-                    paren_depth = paren_depth.saturating_sub(1);
-                    let token = ctx.advance().unwrap();
-                    children.push(any_token_segment(token));
-                }
-                _ => {
-                    if paren_depth == 0 && self.peek_statement_start(ctx) {
-                        break;
-                    }
-                    let token = ctx.advance().unwrap();
-                    children.push(any_token_segment(token));
-                }
+                Some(TokenKind::Semicolon) => break,
+                Some(TokenKind::LParen) => paren_depth += 1,
+                Some(TokenKind::RParen) => paren_depth = paren_depth.saturating_sub(1),
+                _ if paren_depth == 0 && !expect_name && self.peek_statement_start(ctx) => break,
+                _ => {}
             }
+            let token = ctx.advance().unwrap();
+            // A statement keyword where a name belongs is an identifier
+            // (`USE update`), so capitalisation rules leave it alone.
+            let is_keyword_name = expect_name
+                && token.kind == TokenKind::Word
+                && self
+                    .statement_keywords()
+                    .iter()
+                    .any(|kw| token.text.eq_ignore_ascii_case(kw));
+            if !token.kind.is_trivia() {
+                expect_name = match token.kind {
+                    TokenKind::Dot | TokenKind::Comma | TokenKind::ColonColon => true,
+                    TokenKind::Word => binary_search_keyword(NAME_PREFIX_KEYWORDS, &token.text),
+                    _ => false,
+                };
+            }
+            children.push(if is_keyword_name {
+                token_segment(token, SegmentType::Identifier)
+            } else {
+                any_token_segment(token)
+            });
         }
     }
 
@@ -2165,25 +2249,65 @@ fn peek_with_grant_option(ctx: &ParseContext) -> bool {
     })
 }
 
+/// Words always followed by a name (or another such modifier), never by a new
+/// statement: `FETCH ... FROM cur`, `LOCK TABLE ONLY t`, `DEALLOCATE PREPARE p`,
+/// `CLOSE GLOBAL c`.  Sorted.
+const NAME_PREFIX_KEYWORDS: &[&str] = &["FROM", "GLOBAL", "IN", "ONLY", "PREPARE", "TABLE"];
+
+/// Object-type words that may precede a securable name in PostgreSQL
+/// `GRANT ... ON <type> name` (e.g. `TABLE`, `ALL TABLES IN SCHEMA`).  Sorted.
+const SECURABLE_CLASS_KEYWORDS: &[&str] = &[
+    "ALL",
+    "DATA",
+    "DATABASE",
+    "DOMAIN",
+    "FOREIGN",
+    "FUNCTION",
+    "FUNCTIONS",
+    "IN",
+    "LANGUAGE",
+    "LARGE",
+    "OBJECT",
+    "PARAMETER",
+    "PROCEDURE",
+    "PROCEDURES",
+    "ROUTINE",
+    "ROUTINES",
+    "SCHEMA",
+    "SEQUENCE",
+    "SEQUENCES",
+    "SERVER",
+    "TABLE",
+    "TABLES",
+    "TABLESPACE",
+    "TYPE",
+    "WRAPPER",
+];
+
 /// Whether the current word is a securable class prefix after GRANT ... ON:
 /// `OBJECT::name` (T-SQL) or `TABLE name` (PostgreSQL).
 fn peek_securable_class(ctx: &ParseContext) -> bool {
-    if ctx.peek_kind() != Some(TokenKind::Word) {
+    let Some(word) = ctx.peek().filter(|t| t.kind == TokenKind::Word) else {
         return false;
-    }
+    };
     match peek_second_token(ctx) {
-        Some(t) if matches!(t.kind, TokenKind::ColonColon | TokenKind::QuotedIdentifier) => true,
-        Some(t) if t.kind == TokenKind::Word => {
-            !t.text.eq_ignore_ascii_case("TO") && !t.text.eq_ignore_ascii_case("FROM")
+        Some(t) if t.kind == TokenKind::ColonColon => true,
+        // A known type word followed by a name; `ON type TO u` names a table.
+        Some(t) if matches!(t.kind, TokenKind::Word | TokenKind::QuotedIdentifier) => {
+            binary_search_keyword(SECURABLE_CLASS_KEYWORDS, &word.text)
+                && !t.text.eq_ignore_ascii_case("TO")
+                && !t.text.eq_ignore_ascii_case("FROM")
         }
         _ => false,
     }
 }
 
-/// The non-trivia token after the current (non-trivia) one.
+/// The second non-trivia token from the cursor (skipping leading trivia).
 fn peek_second_token<'a>(ctx: &ParseContext<'a>) -> Option<&'a Token> {
-    let rest = ctx.remaining().get(1..)?;
-    rest.iter().find(|t| !t.kind.is_trivia())
+    ctx.remaining()
+        .iter()
+        .filter(|t| !t.kind.is_trivia())
+        .nth(1)
 }
 
 /// Parse a comma-separated GRANT list whose items may span several segments
@@ -2426,4 +2550,22 @@ const JOIN_KEYWORDS: &[&str] = &["CROSS", "FULL", "INNER", "JOIN", "LEFT", "RIGH
 
 pub fn is_join_keyword(word: &str) -> bool {
     binary_search_keyword(JOIN_KEYWORDS, word) || word.eq_ignore_ascii_case("CROSS")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_binary_searched_keyword_lists_are_sorted() {
+        // `binary_search_keyword` silently misses words in an unsorted list.
+        for list in [
+            CLAUSE_KEYWORDS,
+            JOIN_KEYWORDS,
+            NAME_PREFIX_KEYWORDS,
+            SECURABLE_CLASS_KEYWORDS,
+        ] {
+            assert!(list.windows(2).all(|w| w[0] < w[1]), "{list:?}");
+        }
+    }
 }

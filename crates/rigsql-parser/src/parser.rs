@@ -415,9 +415,8 @@ mod tests {
 
     #[test]
     fn test_tsql_simple_statements() {
-        let cst = parse_tsql("USE master;");
-        assert_no_unparsable(&cst);
-        assert_eq!(cst.raw(), "USE master;");
+        let sql = "USE master;";
+        assert_single_statement(&parse_tsql(sql), sql, SegmentType::SimpleStatement);
     }
 
     #[test]
@@ -830,16 +829,8 @@ mod tests {
     // ── GRANT / REVOKE / DENY ────────────────────────────────────
 
     fn assert_single_grant(cst: &Segment, sql: &str) {
-        assert_eq!(cst.raw(), sql);
-        assert_no_unparsable(cst);
-        assert!(find_type(cst, SegmentType::GrantStatement).is_some());
+        assert_single_statement(cst, sql, SegmentType::GrantStatement);
         assert!(find_type(cst, SegmentType::SelectStatement).is_none());
-        let stmts = cst
-            .children()
-            .iter()
-            .filter(|s| s.segment_type() == SegmentType::Statement)
-            .count();
-        assert_eq!(stmts, 1, "expected a single statement");
     }
 
     #[test]
@@ -908,6 +899,169 @@ mod tests {
         });
         assert!(idents.contains(&"reporting".to_string()), "{idents:?}");
         assert!(!idents.contains(&"GROUP".to_string()), "{idents:?}");
+    }
+
+    #[test]
+    fn test_pg_grant_on_keyword_object_name() {
+        // UPDATE is non-reserved in PostgreSQL, so it can name a table / schema.
+        for sql in [
+            "GRANT SELECT ON update TO app_user;",
+            "GRANT SELECT ON TABLE update TO app_user;",
+            "GRANT USAGE ON SCHEMA update TO app_user;",
+            "REVOKE SELECT ON update FROM app_user;",
+            "GRANT SELECT ON t, update TO app_user;",
+            // A class word used as the object name itself.
+            "GRANT SELECT ON type TO app_user;",
+        ] {
+            assert_single_grant(&parse_pg(sql), sql);
+        }
+    }
+
+    #[test]
+    fn test_grant_on_without_to_stops_at_next_statement() {
+        let cst = parse_pg("GRANT SELECT ON t\nUPDATE t SET a = 1");
+        assert!(find_type(&cst, SegmentType::GrantStatement).is_some());
+        assert!(find_type(&cst, SegmentType::UpdateStatement).is_some());
+    }
+
+    // ── TRUNCATE / MERGE / simple statements ─────────────────────
+
+    /// Exactly one top-level Statement, containing `inner`, with no nested
+    /// Statement node (CV06 would flag the inner one as unterminated).
+    fn assert_single_statement(cst: &Segment, sql: &str, inner: SegmentType) {
+        assert_eq!(cst.raw(), sql);
+        assert_no_unparsable(cst);
+        assert!(
+            find_type(cst, inner).is_some(),
+            "missing {inner:?} in {sql}"
+        );
+        let mut statements = 0;
+        cst.walk(&mut |s| {
+            if s.segment_type() == SegmentType::Statement {
+                statements += 1;
+            }
+        });
+        assert_eq!(statements, 1, "expected one Statement node in {sql}");
+    }
+
+    #[test]
+    fn test_truncate_keyword_named_tables() {
+        for sql in [
+            "TRUNCATE update;",
+            "TRUNCATE TABLE update;",
+            "TRUNCATE s.update;",
+            "TRUNCATE a, update;",
+            "TRUNCATE a, ONLY update;",
+            "TRUNCATE TABLE ONLY a, ONLY s.update CONTINUE IDENTITY;",
+            "TRUNCATE TABLE ONLY s.orders, items RESTART IDENTITY CASCADE;",
+        ] {
+            assert_single_statement(&parse_pg(sql), sql, SegmentType::TruncateStatement);
+        }
+    }
+
+    #[test]
+    fn test_truncate_identity_options() {
+        for sql in [
+            "TRUNCATE t CONTINUE IDENTITY;",
+            "TRUNCATE t CONTINUE /* keep */ IDENTITY CASCADE;",
+            "TRUNCATE t RESTART IDENTITY RESTRICT;",
+        ] {
+            assert_single_statement(&parse_pg(sql), sql, SegmentType::TruncateStatement);
+        }
+        let cst = parse_tsql("TRUNCATE t\nCONTINUE;");
+        assert!(find_type(&cst, SegmentType::SimpleStatement).is_some());
+    }
+
+    #[test]
+    fn test_tsql_truncate_with_partitions() {
+        let sql = "TRUNCATE TABLE dbo.t WITH (PARTITIONS (2, 4 TO 6));";
+        assert_single_statement(&parse_tsql(sql), sql, SegmentType::TruncateStatement);
+    }
+
+    #[test]
+    fn test_truncate_without_semicolon_stops_at_next_statement() {
+        let cst = parse_pg("TRUNCATE t\nUPDATE t SET a = 1");
+        assert!(find_type(&cst, SegmentType::TruncateStatement).is_some());
+        assert!(find_type(&cst, SegmentType::UpdateStatement).is_some());
+    }
+
+    #[test]
+    fn test_merge_with_update_insert_delete_clauses() {
+        let sql = "MERGE INTO t USING s ON t.id = s.id \
+                   WHEN MATCHED AND s.del = 1 THEN DELETE \
+                   WHEN MATCHED THEN UPDATE SET a = s.a \
+                   WHEN NOT MATCHED THEN INSERT (id, a) VALUES (s.id, s.a);";
+        assert_single_statement(&parse(sql), sql, SegmentType::MergeStatement);
+        assert_single_statement(&parse_pg(sql), sql, SegmentType::MergeStatement);
+        assert_single_statement(&parse_tsql(sql), sql, SegmentType::MergeStatement);
+    }
+
+    #[test]
+    fn test_simple_statements_are_not_nested_statements() {
+        for (sql, inner) in [
+            ("USE mydb;", SegmentType::SimpleStatement),
+            ("CREATE INDEX idx_a ON t (a);", SegmentType::CreateStatement),
+        ] {
+            assert_single_statement(&parse(sql), sql, inner);
+        }
+    }
+
+    #[test]
+    fn test_simple_statement_operand_named_like_a_keyword() {
+        for sql in [
+            "USE update;",
+            "OPEN update;",
+            "CLOSE update;",
+            "DEALLOCATE update;",
+            "FETCH NEXT FROM update;",
+            "FETCH NEXT IN update;",
+            // Optional modifiers before the name keep it a name.
+            "DEALLOCATE PREPARE update;",
+            "CLOSE GLOBAL update;",
+            "LOCK update;",
+            "LOCK TABLE update IN ACCESS EXCLUSIVE MODE;",
+            "LOCK TABLE ONLY s.update, update IN SHARE MODE;",
+        ] {
+            assert_single_statement(&parse_pg(sql), sql, SegmentType::SimpleStatement);
+        }
+    }
+
+    #[test]
+    fn test_operandless_simple_statement_stops_at_next_statement() {
+        let cst = parse_tsql("WHILE 1 = 1\nBEGIN\n    BREAK\n    SELECT 1;\nEND");
+        assert_no_unparsable(&cst);
+        assert!(find_type(&cst, SegmentType::SimpleStatement).is_some());
+        assert!(find_type(&cst, SegmentType::SelectStatement).is_some());
+    }
+
+    #[test]
+    fn test_error_recovery_keeps_parens_and_dotted_names_together() {
+        // Unknown statements go through error recovery; its boundary check
+        // must not split `s.update` or stop at a SELECT inside parentheses.
+        let cst = parse_pg(
+            "COMMENT ON TABLE update IS 'x';\nANALYZE s.update (a, (SELECT 1));\nSELECT 1;",
+        );
+        let unparsable: Vec<_> = cst
+            .children()
+            .iter()
+            .filter(|s| s.segment_type() == SegmentType::Unparsable)
+            .map(|s| s.raw())
+            .collect();
+        assert_eq!(
+            unparsable,
+            [
+                "COMMENT ON TABLE update IS 'x';",
+                "ANALYZE s.update (a, (SELECT 1));"
+            ]
+        );
+        assert!(find_type(&cst, SegmentType::SelectStatement).is_some());
+    }
+
+    #[test]
+    fn test_statement_keyword_after_separator_is_not_a_boundary() {
+        // No statement can start right after `,` or `.`.
+        let sql = "FETCH NEXT FROM cur INTO a, update;";
+        assert_single_statement(&parse(sql), sql, SegmentType::SimpleStatement);
     }
 
     #[test]

@@ -21,6 +21,7 @@ pub(super) const ANSI_STATEMENT_KEYWORDS: &[&str] = &[
     "FETCH",
     "GRANT",
     "INSERT",
+    "LOCK",
     "MERGE",
     "OPEN",
     "REVOKE",
